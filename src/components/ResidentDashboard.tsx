@@ -4,9 +4,9 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Bell, ShieldAlert, Check, X, Users, Car, Phone, Lock, Eye, EyeOff, ClipboardList, AlertCircle, Trash2, Plus, Clock } from 'lucide-react';
+import { Bell, ShieldAlert, Check, X, Users, Car, Phone, Lock, Eye, EyeOff, ClipboardList, AlertCircle, Trash2, Plus, Clock, RefreshCw } from 'lucide-react';
 import { FlatOwner, Visitor, Vehicle, UserSession } from '../types';
-import { api } from '../lib/api';
+import { api, detectServerEnvironment } from '../lib/api';
 
 const playChime = () => {
   try {
@@ -99,6 +99,23 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   // History Log State
   const [guestHistory, setGuestHistory] = useState<Visitor[]>([]);
   const [loadingHistory, setLoadingHistory] = useState<boolean>(false);
+
+  // Manual sync/refresh state
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await detectServerEnvironment();
+      onRefreshOwners();
+      await checkVisitorAlerts();
+      await fetchMyGuestHistory();
+    } catch (error) {
+      console.error('Failed to perform manual sync:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   // Request desktop notification permission on dashboard load
   useEffect(() => {
@@ -282,8 +299,30 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 text-slate-800">
       
+      {/* Top Header Controls: Manual Refresh & Sync */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-white border border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm gap-4">
+        <div className="text-left">
+          <h1 className="font-display font-bold text-xl text-slate-800 tracking-tight flex items-center space-x-2">
+            <span className="inline-block w-2.5 h-2.5 bg-indigo-600 rounded-full animate-pulse"></span>
+            <span>Resident Dashboard • Flat {wing}-{flatNo}</span>
+          </h1>
+          <p className="text-xs text-slate-400 mt-0.5">Logged in as {myOwnerData ? myOwnerData.nameEn : `Flat ${wing}-${flatNo}`}</p>
+        </div>
+        <div>
+          <button
+            type="button"
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            className="w-full sm:w-auto bg-slate-50 hover:bg-slate-100 active:bg-slate-200 text-slate-700 hover:text-slate-900 border border-slate-200 hover:border-slate-300 disabled:opacity-60 px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center space-x-2 transition cursor-pointer shadow-sm"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${isRefreshing ? 'animate-spin text-indigo-600' : ''}`} />
+            <span>{isRefreshing ? 'Syncing...' : 'Manual Refresh'}</span>
+          </button>
+        </div>
+      </div>
+
       {/* 1. URGENT PENDING APPROVAL ALERTS (Blinking Header, Floating Screen) */}
       {activePoll.length > 0 && (
         <div className="bg-gradient-to-r from-red-500 to-amber-600 rounded-3xl p-6 text-white shadow-2xl border-2 border-amber-400 relative overflow-hidden animate-pulse">
@@ -305,7 +344,7 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
             >
               {/* Photo */}
               <div className="w-32 h-32 bg-slate-800 rounded-xl overflow-hidden border-2 border-white/40 shadow-inner shrink-0">
-                <img src={visitor.photoUrl} alt={visitor.fullName} className="w-full h-full object-cover" />
+                <img src={visitor.photoUrl} alt={visitor.fullName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               </div>
 
               {/* Guest Details */}
@@ -353,7 +392,84 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
         </div>
       )}
 
-      {/* 2. MAIN BENTO GRID Layout: Household management on left, history on right */}
+      {/* 2. GUEST HISTORY & REPORTS LOG (Full Width Section at the Top!) */}
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 text-left">
+        <div className="flex items-center space-x-2.5 mb-4 border-b border-slate-100 pb-3 justify-between">
+          <div className="flex items-center space-x-2">
+            <ClipboardList className="w-5 h-5 text-indigo-600" />
+            <h3 className="font-display font-bold text-base text-slate-800">Guest History & Reports</h3>
+          </div>
+          <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-0.5 rounded-full">
+            {guestHistory.length} total entries
+          </span>
+        </div>
+
+        <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+          Report log of all visitor attempts to your flat, with dates, times, visitor images, and whether entry was approved or declined.
+        </p>
+
+        {loadingHistory && guestHistory.length === 0 ? (
+          <div className="py-12 flex items-center justify-center">
+            <span className="inline-block border-2 border-indigo-600 border-t-transparent rounded-full w-5 h-5 animate-spin"></span>
+          </div>
+        ) : guestHistory.length === 0 ? (
+          <div className="flex flex-col items-center justify-center text-slate-400 py-12 border-2 border-dashed border-slate-100 rounded-xl">
+            <ClipboardList className="w-10 h-10 text-slate-200 mb-2" />
+            <p className="text-xs font-semibold text-slate-600">No Visitor Logs Available</p>
+            <p className="text-[10px] text-slate-400 mt-1">Logs populate as soon as visitors register at the security gate.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[480px] overflow-y-auto pr-1">
+            {guestHistory.map((log) => (
+              <div
+                key={log.id}
+                className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-3 hover:border-slate-300 transition relative overflow-hidden flex flex-col justify-between"
+              >
+                {/* Delete historical record icon */}
+                <button
+                  onClick={() => handleDeleteHistoryRecord(log.id, log.fullName)}
+                  title="Delete visitor log"
+                  className="absolute top-3 right-3 text-slate-400 hover:text-red-500 hover:bg-slate-200/50 p-1 rounded-lg transition cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-3 pr-6 text-left">
+                    <img src={log.photoUrl} alt={log.fullName} className="w-11 h-11 rounded-lg object-cover border bg-slate-200 shrink-0" referrerPolicy="no-referrer" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-800 truncate uppercase">{log.fullName}</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-0.5 font-mono">{log.mobileNumber} • {log.guestType}</p>
+                    </div>
+                  </div>
+
+                  <div className="text-[11px] text-slate-600 bg-white border border-slate-200/40 p-2 rounded-lg leading-relaxed text-left">
+                    <p className="font-medium"><span className="text-slate-400 font-normal">Reason:</span> {log.reason}</p>
+                  </div>
+                </div>
+
+                <div className="text-[9px] text-slate-400 flex items-center justify-between border-t border-slate-100 pt-2.5 mt-2">
+                  <p className="flex items-center text-left">
+                    <Clock className="w-3 h-3 mr-1 shrink-0" />
+                    {new Date(log.requestTime).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} • {new Date(log.requestTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase font-mono ${
+                    log.status === 'approved'
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                      : 'bg-red-50 text-red-700 border border-red-100'
+                  }`}>
+                    {log.status}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 3. SETTINGS & PROFILE BENTO GRID (Underneath History) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         
         {/* Left column: Manage Flat Profiles (7 Cols) */}
@@ -398,7 +514,7 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                     </div>
                     <button
                       onClick={() => handleRemoveMember(idx)}
-                      className="text-slate-400 hover:text-red-500 p-1 rounded-md transition"
+                      className="text-slate-400 hover:text-red-500 p-1 rounded-md transition cursor-pointer"
                       title="Remove member"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -466,7 +582,7 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                       </span>
                       <button
                         onClick={() => handleRemoveVehicle(v.id)}
-                        className="text-slate-400 hover:text-red-500 p-1.5 rounded-md transition"
+                        className="text-slate-400 hover:text-red-500 p-1.5 rounded-md transition cursor-pointer"
                         title="Unregister vehicle"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -532,14 +648,17 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
             </form>
           </div>
 
-          {/* Contact settings & Security change password */}
+        </div>
+
+        {/* Right column: Alternate contact & Password (5 Cols) */}
+        <div className="lg:col-span-5 space-y-6">
           <form onSubmit={handleSaveGeneral} className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 text-left space-y-4">
             <div className="flex items-center space-x-2.5 mb-2 border-b border-slate-100 pb-3">
               <Lock className="w-5 h-5 text-indigo-600" />
               <h3 className="font-display font-bold text-base text-slate-800">Security & Alternate Contact</h3>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-4">
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase">Alternate Contact No.</label>
                 <div className="relative">
@@ -580,91 +699,13 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
             <button
               type="submit"
               disabled={savingSettings}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-xs transition cursor-pointer"
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-xs transition cursor-pointer shadow"
             >
               Save Details & Password
             </button>
           </form>
-
         </div>
 
-        {/* Right column: Guest History / Reports Log (5 Cols) */}
-        <div className="lg:col-span-5 bg-white border border-slate-200 rounded-2xl shadow-sm p-6 text-left flex flex-col h-[750px]">
-          <div className="flex items-center space-x-2.5 mb-4 border-b border-slate-100 pb-3 justify-between">
-            <div className="flex items-center space-x-2">
-              <ClipboardList className="w-5 h-5 text-indigo-600" />
-              <h3 className="font-display font-bold text-base text-slate-800">Guest History & Reports</h3>
-            </div>
-            <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-0.5 rounded-full">
-              {guestHistory.length} total
-            </span>
-          </div>
-
-          <p className="text-xs text-slate-500 mb-4 leading-relaxed">
-            Report log of all visitor attempts to your flat, with dates, times, visitor images, and whether entry was approved or declined.
-          </p>
-
-          {loadingHistory && guestHistory.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center">
-              <span className="inline-block border-2 border-indigo-600 border-t-transparent rounded-full w-5 h-5 animate-spin"></span>
-            </div>
-          ) : guestHistory.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-slate-400 py-12 border-2 border-dashed border-slate-100 rounded-xl">
-              <ClipboardList className="w-10 h-10 text-slate-200 mb-2" />
-              <p className="text-xs font-semibold text-slate-600">No Visitor Logs Available</p>
-              <p className="text-[10px] text-slate-400 mt-1">Logs populate as soon as visitors register at the security gate.</p>
-            </div>
-          ) : (
-            <div className="flex-1 overflow-y-auto pr-1 space-y-4">
-              {guestHistory.map((log) => (
-                <div
-                  key={log.id}
-                  className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-3 hover:border-slate-300 transition relative overflow-hidden"
-                >
-                  {/* Delete historical record icon */}
-                  <button
-                    onClick={() => handleDeleteHistoryRecord(log.id, log.fullName)}
-                    title="Delete visitor log"
-                    className="absolute top-3 right-3 text-slate-400 hover:text-red-500 hover:bg-slate-200/50 p-1 rounded-lg transition cursor-pointer"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-
-                  <div className="flex items-center space-x-3 pr-6">
-                    <img src={log.photoUrl} alt={log.fullName} className="w-11 h-11 rounded-lg object-cover border bg-slate-200 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-800 truncate uppercase">{log.fullName}</span>
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase font-mono ${
-                          log.status === 'approved'
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                            : 'bg-red-50 text-red-700 border border-red-100'
-                        }`}>
-                          {log.status}
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-slate-500 mt-0.5 font-mono">{log.mobileNumber} • {log.guestType}</p>
-                    </div>
-                  </div>
-
-                  <div className="text-[11px] text-slate-600 bg-white border border-slate-200/40 p-2 rounded-lg leading-relaxed">
-                    <p className="font-medium"><span className="text-slate-400 font-normal">Reason:</span> {log.reason}</p>
-                  </div>
-
-                  <div className="text-[9px] text-slate-400 flex items-center justify-between border-t border-slate-100 pt-2.5">
-                    <p className="flex items-center">
-                      <Clock className="w-3 h-3 mr-1" />
-                      {new Date(log.requestTime).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} • {new Date(log.requestTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                    {log.respondedTime && (
-                      <p className="italic">Approved/Declined in under 1m</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
 
     </div>

@@ -4,10 +4,10 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Shield, Plus, Clock, Search, AlertCircle, CheckCircle2, XCircle, FileSpreadsheet, User, Phone, Check, Trash2 } from 'lucide-react';
+import { Shield, Plus, Clock, Search, AlertCircle, CheckCircle2, XCircle, FileSpreadsheet, User, Phone, Check, Trash2, RefreshCw } from 'lucide-react';
 import { FlatOwner, Visitor } from '../types';
 import WebcamCapture from './WebcamCapture';
-import { api } from '../lib/api';
+import { api, detectServerEnvironment } from '../lib/api';
 
 const playDecisionSound = (status: 'approved' | 'rejected') => {
   try {
@@ -73,6 +73,22 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
 
   // Sound effects / Visual popups for newly resolved visitors
   const [showStatusAlert, setShowStatusAlert] = useState<Visitor | null>(null);
+
+  // Manual sync/refresh state
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await detectServerEnvironment();
+      onRefreshOwners();
+      await fetchVisitors();
+    } catch (error) {
+      console.error('Failed to perform manual sync:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   // Generate list of flats (101-104 up to 1201-1204)
   const flats: number[] = [];
@@ -214,6 +230,28 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
 
   return (
     <div className="space-y-8">
+      
+      {/* Top Controls: Manual Refresh & Sync */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-white border border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm gap-4">
+        <div className="text-left">
+          <h1 className="font-display font-bold text-xl text-slate-800 tracking-tight flex items-center space-x-2">
+            <span className="inline-block w-2.5 h-2.5 bg-indigo-600 rounded-full animate-pulse"></span>
+            <span>Gate Security Control Panel</span>
+          </h1>
+          <p className="text-xs text-slate-400 mt-0.5">Real-time gatekeeper monitoring and resident approvals.</p>
+        </div>
+        <div>
+          <button
+            type="button"
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            className="w-full sm:w-auto bg-slate-50 hover:bg-slate-100 active:bg-slate-200 text-slate-700 hover:text-slate-900 border border-slate-200 hover:border-slate-300 disabled:opacity-60 px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center space-x-2 transition cursor-pointer shadow-sm"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${isRefreshing ? 'animate-spin text-indigo-600' : ''}`} />
+            <span>{isRefreshing ? 'Syncing...' : 'Manual Refresh'}</span>
+          </button>
+        </div>
+      </div>
       
       {/* Visual Resolution Modal/Alert Banner (Big Confirmation Overlay) */}
       {showStatusAlert && (

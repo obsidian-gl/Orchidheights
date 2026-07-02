@@ -99,7 +99,7 @@ async function safeRequest<T>(
     }
     return await response.json() as T;
   } catch (error: any) {
-    // If it's a TypeError (failed to fetch/network error/CORS/JSON syntax error), set fallback and run local
+    // If it's a TypeError (failed to fetch/network error/CORS/JSON syntax error), run local fallback
     if (
       error instanceof TypeError || 
       error.message?.includes('Failed to fetch') || 
@@ -107,8 +107,8 @@ async function safeRequest<T>(
       error.message?.includes('Unexpected token') ||
       error.message?.includes('is not valid JSON')
     ) {
-      console.warn(`Connection failed to ${apiPath} (${error.message}). Falling back to browser-only database mode.`);
-      useClientFallback = true;
+      console.warn(`Connection failed to ${apiPath} (${error.message}). Using transient local storage fallback for this request.`);
+      // DO NOT set useClientFallback = true here permanently so that future polls/requests can still recover and hit the server!
       return localFallbackFn();
     }
     throw error;
