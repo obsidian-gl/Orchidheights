@@ -63,6 +63,7 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
   const [reason, setReason] = useState<string>('');
   const [guestType, setGuestType] = useState<string>('Delivery');
   const [photoUrl, setPhotoUrl] = useState<string>('');
+  const [visitorCount, setVisitorCount] = useState<number>(1);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [formError, setFormError] = useState<string>('');
 
@@ -132,11 +133,29 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
   // Keep a stable version of visitor mapper helper
   const newVisitsData = (data: Visitor[]): Visitor[] => data;
 
-  // Poll for status updates every 2 seconds
+  // Subscribe to real-time status updates from Firestore
   useEffect(() => {
-    fetchVisitors();
-    const interval = setInterval(fetchVisitors, 2000);
-    return () => clearInterval(interval);
+    const unsubscribe = api.subscribeAllVisitors(
+      (data) => {
+        setVisitors((prev) => {
+          // Detect if any previously pending visitor got approved or rejected recently
+          data.forEach((newVis: Visitor) => {
+            const oldVis = prev.find((v) => v.id === newVis.id);
+            if (oldVis && oldVis.status === 'pending' && newVis.status !== 'pending') {
+              // Trigger visual alert
+              setShowStatusAlert(newVis);
+              // Play success/warning chime!
+              playDecisionSound(newVis.status);
+            }
+          });
+          return data;
+        });
+      },
+      (error) => {
+        console.error('Real-time visitors subscription failed:', error);
+      }
+    );
+    return () => unsubscribe();
   }, []);
 
   // Handle deleting a visitor request/log
@@ -183,7 +202,8 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
         reason: reason.trim(),
         guestType,
         photoUrl,
-        flatOwnerName
+        flatOwnerName,
+        visitorCount
       });
 
       if (visitor) {
@@ -193,6 +213,7 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
         setEmail('');
         setReason('');
         setPhotoUrl(''); // will reset capture preview
+        setVisitorCount(1);
         fetchVisitors();
         
         // Scroll to active tracking list
@@ -400,13 +421,13 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Reason to Visit <span className="text-red-500">*</span></label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Parcel delivery, courier, family visit"
+                  placeholder="e.g. Parcel delivery, family"
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl py-2.5 px-3.5 text-sm font-medium transition outline-none"
@@ -420,6 +441,18 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
                   placeholder="visitor@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl py-2.5 px-3.5 text-sm font-medium transition outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Number of Visitors <span className="text-red-500">*</span></label>
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  value={visitorCount}
+                  onChange={(e) => setVisitorCount(Math.max(1, parseInt(e.target.value, 10) || 1))}
                   className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl py-2.5 px-3.5 text-sm font-medium transition outline-none"
                 />
               </div>
@@ -553,9 +586,8 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
                   <th className="py-3 px-4">Visitor</th>
                   <th className="py-3 px-4">Flat Target</th>
                   <th className="py-3 px-4">Reason / Guest Type</th>
-                  <th className="py-3 px-4">Timing</th>
+                  <th className="py-3 px-4 text-center font-bold">Timing</th>
                   <th className="py-3 px-4 text-center">Status</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
@@ -580,7 +612,7 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
                         {log.guestType}
                       </span>
                     </td>
-                    <td className="py-3.5 px-4 text-slate-400 text-[10px]">
+                    <td className="py-3.5 px-4 text-slate-400 text-[10px] text-center">
                       <p>In: {new Date(log.requestTime).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} • {new Date(log.requestTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</p>
                       {log.respondedTime && (
                         <p className="mt-0.5 text-slate-500">Responded: {new Date(log.respondedTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</p>
@@ -594,15 +626,6 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
                       }`}>
                         <span>{log.status === 'approved' ? '● Approved' : '● Rejected'}</span>
                       </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      <button
-                        onClick={() => handleDeleteVisitor(log.id, log.fullName)}
-                        title="Delete visitor record"
-                        className="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition cursor-pointer inline-flex items-center"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
                     </td>
                   </tr>
                 ))}

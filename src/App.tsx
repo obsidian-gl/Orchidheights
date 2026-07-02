@@ -51,6 +51,23 @@ export default function App() {
     loadOwners();
   }, []);
 
+  // Register service worker and request Notification permission on startup
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/firebase-messaging-sw.js')
+        .then((reg) => {
+          console.log('Orchid Heights service worker registered:', reg.scope);
+        })
+        .catch((err) => {
+          console.error('Orchid Heights service worker registration failed:', err);
+        });
+    }
+
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
+
   // Set default tabs based on authenticated roles
   useEffect(() => {
     if (session) {

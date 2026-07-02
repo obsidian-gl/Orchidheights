@@ -4,8 +4,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Bell, ShieldAlert, Check, X, Users, Car, Phone, Lock, Eye, EyeOff, ClipboardList, AlertCircle, Trash2, Plus, Clock, RefreshCw } from 'lucide-react';
-import { FlatOwner, Visitor, Vehicle, UserSession } from '../types';
+import { Bell, ShieldAlert, Check, X, Users, Car, Phone, Lock, Eye, EyeOff, ClipboardList, AlertCircle, Trash2, Plus, Clock, RefreshCw, Megaphone } from 'lucide-react';
+import { FlatOwner, Visitor, Vehicle, UserSession, Announcement } from '../types';
 import { api, detectServerEnvironment } from '../lib/api';
 
 const playChime = () => {
@@ -50,11 +50,20 @@ const triggerNewVisitorNotification = (visitor: Visitor) => {
   if ('Notification' in window) {
     if (Notification.permission === 'granted') {
       try {
-        new Notification(`Orchid Heights Gatekeeper`, {
-          body: `${visitor.fullName} (${visitor.guestType}) is waiting at the gate for your approval!`,
+        const title = `🚪 New Visitor: ${visitor.fullName}`;
+        const countText = visitor.visitorCount && visitor.visitorCount > 1 ? ` (${visitor.visitorCount} Visitors)` : '';
+        const bodyText = `Type: ${visitor.guestType}${countText}\nWing-Flat: ${visitor.wing}-${visitor.flatNo}\nReason: ${visitor.reason}${visitor.email ? `\nEmail: ${visitor.email}` : ''}`;
+        
+        new Notification(title, {
+          body: bodyText,
+          icon: visitor.photoUrl || '/icon.png',
           tag: visitor.id,
-          requireInteraction: true
-        });
+          requireInteraction: true,
+          actions: [
+            { action: 'approve', title: '✅ Approve' },
+            { action: 'reject', title: '❌ Reject' }
+          ]
+        } as any);
       } catch (err) {
         console.warn('Failed to construct desktop Notification:', err);
       }
@@ -99,6 +108,22 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   // History Log State
   const [guestHistory, setGuestHistory] = useState<Visitor[]>([]);
   const [loadingHistory, setLoadingHistory] = useState<boolean>(false);
+
+  // Announcements state
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+
+  // Subscribe to targeted real-time announcements
+  useEffect(() => {
+    if (!wing || !flatNo) return;
+    const unsubscribe = api.subscribeAnnouncements(wing, flatNo, (list) => {
+      setAnnouncements(list);
+    });
+    return () => unsubscribe();
+  }, [wing, flatNo]);
+
+  // Rejection State
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectReasonText, setRejectReasonText] = useState<string>('');
 
   // Manual sync/refresh state
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
@@ -206,12 +231,15 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   }, [wing, flatNo]);
 
   // Respond to waiting visitor (Accept / Reject)
-  const handleRespond = async (visitorId: string, status: 'approved' | 'rejected') => {
+  const handleRespond = async (visitorId: string, status: 'approved' | 'rejected', customReason?: string) => {
     try {
-      const res = await api.respondToVisitor(visitorId, status);
+      const responderName = session.ownerName || `Owner of Flat ${wing}-${flatNo}`;
+      const res = await api.respondToVisitor(visitorId, status, responderName, customReason || '');
       if (res.success) {
         // Optimistic state clear
         setActivePoll((prev) => prev.filter((v) => v.id !== visitorId));
+        setRejectingId(null);
+        setRejectReasonText('');
         fetchMyGuestHistory();
       }
     } catch (error) {
@@ -397,21 +425,54 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
               </div>
 
               {/* Responses Action Buttons */}
-              <div className="flex sm:flex-col gap-3 w-full md:w-auto shrink-0 justify-center">
-                <button
-                  onClick={() => handleRespond(visitor.id, 'approved')}
-                  className="flex-1 md:w-44 bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl text-xs flex items-center justify-center space-x-1.5 shadow-md cursor-pointer"
-                >
-                  <Check className="w-4 h-4" />
-                  <span>Approve Entry</span>
-                </button>
-                <button
-                  onClick={() => handleRespond(visitor.id, 'rejected')}
-                  className="flex-1 md:w-44 bg-red-500 hover:bg-red-600 active:bg-red-700 text-white font-bold py-3 px-4 rounded-xl text-xs flex items-center justify-center space-x-1.5 shadow-md cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                  <span>Reject / Decline</span>
-                </button>
+              <div className="flex flex-col gap-3 w-full md:w-56 shrink-0 justify-center bg-slate-900/40 p-4 rounded-xl border border-white/5">
+                {rejectingId === visitor.id ? (
+                  <div className="space-y-2 text-left w-full">
+                    <p className="text-[10px] text-red-300 font-bold uppercase tracking-wider">Provide rejection reason:</p>
+                    <input
+                      type="text"
+                      placeholder="e.g. Unknown person, wrong flat"
+                      value={rejectReasonText}
+                      onChange={(e) => setRejectReasonText(e.target.value)}
+                      className="w-full bg-slate-800 border border-slate-700 focus:border-red-400 text-white placeholder-slate-500 rounded-lg py-1.5 px-2.5 text-xs outline-none transition"
+                    />
+                    <div className="flex gap-2 w-full">
+                      <button
+                        onClick={() => handleRespond(visitor.id, 'rejected', rejectReasonText)}
+                        className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-1 rounded-lg text-[10px] flex items-center justify-center space-x-1 shadow transition cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>Confirm</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setRejectingId(null);
+                          setRejectReasonText('');
+                        }}
+                        className="bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold py-2 px-2.5 rounded-lg text-[10px] transition cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => handleRespond(visitor.id, 'approved')}
+                      className="w-full bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center space-x-1.5 shadow-md cursor-pointer transition-all"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>Approve Entry</span>
+                    </button>
+                    <button
+                      onClick={() => setRejectingId(visitor.id)}
+                      className="w-full bg-red-500 hover:bg-red-600 active:bg-red-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center space-x-1.5 shadow-md cursor-pointer transition-all"
+                    >
+                      <X className="w-4 h-4" />
+                      <span>Reject / Decline</span>
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           ))}
@@ -678,6 +739,55 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
 
         {/* Right column: Alternate contact & Password (5 Cols) */}
         <div className="lg:col-span-5 space-y-6">
+          
+          {/* Real-time Announcements Notice Board */}
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 text-left">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+              <div className="flex items-center space-x-2.5">
+                <Megaphone className="w-5 h-5 text-indigo-600 animate-pulse" />
+                <h3 className="font-display font-bold text-base text-slate-800">Society Notices</h3>
+              </div>
+              {announcements.length > 0 && (
+                <span className="bg-indigo-50 border border-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                  {announcements.length} Active
+                </span>
+              )}
+            </div>
+
+            {announcements.length === 0 ? (
+              <div className="py-8 flex flex-col items-center justify-center text-slate-400 border border-dashed border-slate-150 rounded-xl">
+                <Megaphone className="w-8 h-8 text-slate-200 mb-1.5" />
+                <p className="text-xs font-semibold text-slate-500">All Quiet Here</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">No active announcements for your flat.</p>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
+                {announcements.map((ann) => (
+                  <div
+                    key={ann.id}
+                    className="p-3 border rounded-xl bg-slate-50/50 hover:bg-slate-50 transition border-slate-200/60 text-left space-y-2 relative overflow-hidden"
+                  >
+                    {/* Corner Target Label */}
+                    <span className="absolute top-2 right-2 text-[8px] font-bold bg-white text-slate-400 border px-1.5 py-0.5 rounded uppercase font-mono">
+                      {ann.target}
+                    </span>
+
+                    <p className="text-xs font-medium text-slate-700 leading-relaxed pr-8 whitespace-pre-line">
+                      {ann.text}
+                    </p>
+
+                    <div className="flex items-center justify-between text-[9px] text-slate-400 border-t border-slate-100 pt-2 font-mono">
+                      <span>By: {ann.sender}</span>
+                      <span>
+                        {new Date(ann.timestamp).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} • {new Date(ann.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <form onSubmit={handleSaveGeneral} className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 text-left space-y-4">
             <div className="flex items-center space-x-2.5 mb-2 border-b border-slate-100 pb-3">
               <Lock className="w-5 h-5 text-indigo-600" />

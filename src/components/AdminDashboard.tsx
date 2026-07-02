@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Key, Edit3, Trash2, Database, AlertTriangle, ShieldCheck, Check, RefreshCw, X, Search, Phone } from 'lucide-react';
+import { Key, Edit3, Trash2, Database, AlertTriangle, ShieldCheck, Check, RefreshCw, X, Search, Phone, Megaphone } from 'lucide-react';
 import { FlatOwner } from '../types';
 import { api } from '../lib/api';
 
@@ -33,9 +33,18 @@ export default function AdminDashboard({ owners, onRefreshOwners }: AdminDashboa
   const [editNameGu, setEditNameGu] = useState<string>('');
   const [editPhone, setEditPhone] = useState<string>('');
   const [editSecondary, setEditSecondary] = useState<string>('');
+  const [editNotificationsEnabled, setEditNotificationsEnabled] = useState<boolean>(true);
   const [editError, setEditError] = useState<string>('');
   const [editSuccess, setEditSuccess] = useState<string>('');
   const [editLoading, setEditLoading] = useState<boolean>(false);
+
+  // Broadcast targeted announcement state
+  const [broadcastTarget, setBroadcastTarget] = useState<string>('all');
+  const [broadcastWing, setBroadcastWing] = useState<'A' | 'B'>('A');
+  const [broadcastFlatNo, setBroadcastFlatNo] = useState<number>(101);
+  const [broadcastText, setBroadcastText] = useState<string>('');
+  const [broadcastSuccess, setBroadcastSuccess] = useState<string>('');
+  const [broadcastLoading, setBroadcastLoading] = useState<boolean>(false);
 
   // Search through all owners
   const [adminSearch, setAdminSearch] = useState<string>('');
@@ -104,6 +113,7 @@ export default function AdminDashboard({ owners, onRefreshOwners }: AdminDashboa
     setEditNameGu(owner.nameGu.toLowerCase().includes('ખાલી') ? '' : owner.nameGu);
     setEditPhone(owner.phone);
     setEditSecondary(owner.secondaryContact || '');
+    setEditNotificationsEnabled(owner.notificationsEnabled !== false);
     setEditError('');
     setEditSuccess('');
   };
@@ -121,7 +131,8 @@ export default function AdminDashboard({ owners, onRefreshOwners }: AdminDashboa
         nameEn: editNameEn.trim() || `Vacant / Owner Flat ${editOwner.wing}-${editOwner.flatNo}`,
         nameGu: editNameGu.trim() || `ખાલી ફ્લેટ ${editOwner.wing}-${editOwner.flatNo}`,
         phone: editPhone.trim(),
-        secondaryContact: editSecondary.trim()
+        secondaryContact: editSecondary.trim(),
+        notificationsEnabled: editNotificationsEnabled
       });
 
       if (data.success) {
@@ -137,6 +148,34 @@ export default function AdminDashboard({ owners, onRefreshOwners }: AdminDashboa
       setEditError('Server connection error.');
     } finally {
       setEditLoading(false);
+    }
+  };
+
+  const handleSendBroadcast = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!broadcastText.trim()) return;
+
+    setBroadcastLoading(true);
+    setBroadcastSuccess('');
+
+    try {
+      const success = await api.sendAnnouncement(
+        broadcastTarget as 'all' | 'wing' | 'flat',
+        broadcastTarget === 'all' ? '' : broadcastWing,
+        broadcastTarget === 'flat' ? broadcastFlatNo : 0,
+        broadcastText.trim(),
+        'Rahul Popat (B-1104 / Admin)'
+      );
+
+      if (success) {
+        setBroadcastSuccess('Announcement broadcasted successfully to target residents!');
+        setBroadcastText('');
+        setTimeout(() => setBroadcastSuccess(''), 4000);
+      }
+    } catch (error) {
+      console.error('Broadcast error:', error);
+    } finally {
+      setBroadcastLoading(false);
     }
   };
 
@@ -240,6 +279,107 @@ export default function AdminDashboard({ owners, onRefreshOwners }: AdminDashboa
                 className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-xs shadow transition cursor-pointer"
               >
                 {passLoading ? 'Updating...' : 'Update Password Override'}
+              </button>
+            </form>
+          </div>
+
+          {/* Card: Broadcast Society Announcement */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+            <div className="flex items-center space-x-2 border-b border-slate-100 pb-3 mb-4 text-indigo-600">
+              <Megaphone className="w-5 h-5 animate-pulse" />
+              <h3 className="font-display font-bold text-base text-slate-800">Broadcast Announcement</h3>
+            </div>
+
+            {broadcastSuccess && (
+              <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 p-3 rounded-xl text-xs flex items-start space-x-1.5 mb-4">
+                <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                <span>{broadcastSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSendBroadcast} className="space-y-4 text-left">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Target Audience</label>
+                <select
+                  value={broadcastTarget}
+                  onChange={(e) => setBroadcastTarget(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs font-semibold outline-none focus:bg-white"
+                >
+                  <option value="all">Entire Orchid Heights (All Flats)</option>
+                  <option value="wing">Specific Wing (A or B)</option>
+                  <option value="flat">Specific Apartment (e.g. B-1104)</option>
+                </select>
+              </div>
+
+              {broadcastTarget === 'wing' && (
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Select Wing</label>
+                  <div className="flex bg-slate-100 p-1 rounded-lg text-xs font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => setBroadcastWing('A')}
+                      className={`flex-1 py-1.5 rounded-md transition ${broadcastWing === 'A' ? 'bg-white text-slate-900 shadow-sm font-bold' : 'text-slate-500 hover:text-slate-900'}`}
+                    >
+                      Wing A
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBroadcastWing('B')}
+                      className={`flex-1 py-1.5 rounded-md transition ${broadcastWing === 'B' ? 'bg-white text-slate-900 shadow-sm font-bold' : 'text-slate-500 hover:text-slate-900'}`}
+                    >
+                      Wing B
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {broadcastTarget === 'flat' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Wing</label>
+                    <select
+                      value={broadcastWing}
+                      onChange={(e) => setBroadcastWing(e.target.value as 'A' | 'B')}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs font-semibold outline-none focus:bg-white"
+                    >
+                      <option value="A">Wing A</option>
+                      <option value="B">Wing B</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Flat No</label>
+                    <select
+                      value={broadcastFlatNo}
+                      onChange={(e) => setBroadcastFlatNo(parseInt(e.target.value, 10))}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs font-semibold outline-none focus:bg-white"
+                    >
+                      {flats.map((f) => (
+                        <option key={f} value={f}>{f}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Message Content</label>
+                <textarea
+                  required
+                  rows={3}
+                  placeholder="Type important notice or security alert..."
+                  value={broadcastText}
+                  onChange={(e) => setBroadcastText(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs font-medium outline-none focus:bg-white resize-none"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={broadcastLoading}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-xs shadow transition cursor-pointer"
+              >
+                {broadcastLoading ? 'Broadcasting...' : 'Broadcast Announcement'}
               </button>
             </form>
           </div>
@@ -391,6 +531,19 @@ export default function AdminDashboard({ owners, onRefreshOwners }: AdminDashboa
                       className="w-full bg-white border border-indigo-200 rounded-lg p-2 text-xs font-semibold outline-none focus:border-indigo-500"
                     />
                   </div>
+                </div>
+
+                <div className="flex items-center space-x-2 pt-1 pb-2 text-left">
+                  <input
+                    type="checkbox"
+                    id="editNotificationsEnabled"
+                    checked={editNotificationsEnabled}
+                    onChange={(e) => setEditNotificationsEnabled(e.target.checked)}
+                    className="w-4 h-4 text-indigo-600 border-indigo-200 rounded focus:ring-indigo-500 cursor-pointer"
+                  />
+                  <label htmlFor="editNotificationsEnabled" className="text-xs font-semibold text-indigo-950 cursor-pointer select-none">
+                    Enable active approval push alerts for this flat
+                  </label>
                 </div>
 
                 <div className="flex gap-2 justify-end pt-2">

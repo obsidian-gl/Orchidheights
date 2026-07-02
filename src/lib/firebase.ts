@@ -17,7 +17,7 @@ import {
   onSnapshot,
   where
 } from 'firebase/firestore';
-import { FlatOwner, Visitor } from '../types';
+import { FlatOwner, Visitor, Announcement } from '../types';
 import { getInitialOwners } from '../data/ownersData';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -205,6 +205,7 @@ export async function updateOwnerDetails(wing: string, flatNo: number, payload: 
   if (secondaryContact !== undefined) updated.secondaryContact = secondaryContact;
   if (members !== undefined) updated.members = members.slice(0, 2);
   if (vehicles !== undefined) updated.vehicles = vehicles;
+  if (payload.notificationsEnabled !== undefined) updated.notificationsEnabled = payload.notificationsEnabled;
 
   try {
     await setDoc(ownerRef, updated);
@@ -275,9 +276,10 @@ export async function resetDatabaseToDefault(): Promise<boolean> {
  * Create a new visitor request
  */
 export async function registerVisitor(payload: any): Promise<Visitor> {
-  const { fullName, mobileNumber, email, wing, flatNo, reason, guestType, photoUrl, flatOwnerName } = payload;
+  const { fullName, mobileNumber, email, wing, flatNo, reason, guestType, photoUrl, flatOwnerName, visitorCount } = payload;
   const visitorId = 'v_' + Math.random().toString(36).substr(2, 9);
   
+  const count = parseInt(visitorCount, 10) || 1;
   const newVisitor: Visitor = {
     id: visitorId,
     fullName,
@@ -290,7 +292,8 @@ export async function registerVisitor(payload: any): Promise<Visitor> {
     photoUrl: photoUrl || '',
     status: 'pending',
     requestTime: new Date().toISOString(),
-    flatOwnerName: flatOwnerName || `Flat ${wing}-${flatNo}`
+    flatOwnerName: flatOwnerName || `Flat ${wing}-${flatNo}`,
+    visitorCount: count
   };
 
   try {
@@ -310,7 +313,8 @@ export async function registerVisitor(payload: any): Promise<Visitor> {
       photoUrl: photoUrl || '',
       status: 'pending',
       requestTime: newVisitor.requestTime,
-      flatOwnerName: newVisitor.flatOwnerName
+      flatOwnerName: newVisitor.flatOwnerName,
+      visitorCount: count
     });
 
     return newVisitor;
@@ -381,7 +385,12 @@ export async function pollPendingVisitorAlerts(wing: string, flatNo: number): Pr
 /**
  * Respond to visitor request
  */
-export async function respondToVisitorRequest(visitorId: string, status: 'approved' | 'rejected'): Promise<{ success: boolean; visitor?: Visitor }> {
+export async function respondToVisitorRequest(
+  visitorId: string,
+  status: 'approved' | 'rejected',
+  respondedBy?: string,
+  rejectReason?: string
+): Promise<{ success: boolean; visitor?: Visitor }> {
   const visitorRef = doc(db, 'visitors', visitorId);
   let snap;
   try {
@@ -395,10 +404,12 @@ export async function respondToVisitorRequest(visitorId: string, status: 'approv
   }
 
   const currentVisitor = snap.data() as Visitor;
-  const updated = {
+  const updated: Visitor = {
     ...currentVisitor,
     status,
-    respondedTime: new Date().toISOString()
+    respondedTime: new Date().toISOString(),
+    respondedBy: respondedBy || 'Resident',
+    rejectReason: rejectReason || ''
   };
 
   try {
@@ -407,7 +418,9 @@ export async function respondToVisitorRequest(visitorId: string, status: 'approv
     // Explicitly update the status in the 'notifications' collection
     await setDoc(doc(db, 'notifications', visitorId), {
       status,
-      respondedTime: updated.respondedTime
+      respondedTime: updated.respondedTime,
+      respondedBy: updated.respondedBy,
+      rejectReason: updated.rejectReason
     }, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `visitors/${visitorId}`);
@@ -461,6 +474,103 @@ export function subscribeToVisitorNotifications(
     },
     (error) => {
       console.error('Snapshot listener error:', error);
+      if (onError) onError(error);
+    }
+  );
+}
+
+/**
+ * Setup a real-time listener on all visitors for security panel
+ */
+export function subscribeToAllVisitors(
+  onUpdate: (visitors: Visitor[]) => void,
+  onError?: (error: Error) => void
+) {
+  const visitorsCol = collection(db, 'visitors');
+  return onSnapshot(
+    visitorsCol,
+    (snapshot) => {
+      const list: Visitor[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push(docSnap.data() as Visitor);
+      });
+      // Sort newest first
+      list.sort((a, b) => new Date(b.requestTime).getTime() - new Date(a.requestTime).getTime());
+      onUpdate(list);
+    },
+    (error) => {
+      console.error('All visitors snapshot listener error:', error);
+      if (onError) onError(error);
+    }
+  );
+}
+
+/**
+ * Creates a brand new announcement / broadcast targeted at specific residents.
+ */
+export async function sendBroadcastAnnouncement(
+  target: 'all' | 'wing' | 'flat',
+  wing: 'A' | 'B' | '',
+  flatNo: number,
+  text: string,
+  sender: string
+): Promise<boolean> {
+  const id = 'ann_' + Math.random().toString(36).substring(2, 11);
+  const docRef = doc(db, 'announcements', id);
+  
+  const payload: Announcement = {
+    id,
+    target,
+    text,
+    timestamp: new Date().toISOString(),
+    sender
+  };
+  
+  if (wing) payload.wing = wing as 'A' | 'B';
+  if (flatNo) payload.flatNo = flatNo;
+
+  try {
+    await setDoc(docRef, payload);
+    return true;
+  } catch (error) {
+    console.error('Failed to send broadcast announcement:', error);
+    return false;
+  }
+}
+
+/**
+ * Real-time subscription to targeted announcements for residents.
+ */
+export function subscribeToAnnouncements(
+  wing: 'A' | 'B',
+  flatNo: number,
+  onUpdate: (announcements: Announcement[]) => void,
+  onError?: (error: Error) => void
+) {
+  const annCol = collection(db, 'announcements');
+  return onSnapshot(
+    annCol,
+    (snapshot) => {
+      const list: Announcement[] = [];
+      snapshot.forEach((docSnap) => {
+        const item = docSnap.data() as Announcement;
+        
+        // Filter in-memory based on target rules
+        const matchesAll = item.target === 'all';
+        const matchesWing = item.target === 'wing' && item.wing === wing;
+        const matchesFlat = item.target === 'flat' && item.wing === wing && item.flatNo === flatNo;
+        
+        if (matchesAll || matchesWing || matchesFlat) {
+          list.push(item);
+        }
+      });
+      
+      // Sort newest first
+      list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      onUpdate(list);
+    },
+    (error) => {
+      console.error('Announcements subscription failed:', error);
       if (onError) onError(error);
     }
   );

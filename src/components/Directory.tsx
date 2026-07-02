@@ -220,19 +220,31 @@ export default function Directory({ owners, session, onEditTrigger }: DirectoryP
                   {!isVacant && (
                     <div className="space-y-1.5 border-t border-slate-100 pt-3">
                       <div className="flex items-center space-x-1.5">
-                        <Phone className="w-3.5 h-3.5 text-slate-400" />
-                        <span className="text-xs font-medium text-slate-600 font-mono">
-                          {owner.phone ? `+91 ${owner.phone}` : 'No phone listed'}
-                        </span>
+                        <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        {owner.phone ? (
+                          <a
+                            href={`tel:+91${owner.phone}`}
+                            className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:underline font-mono transition"
+                            title={`Click to call ${owner.nameEn}`}
+                          >
+                            +91 {owner.phone}
+                          </a>
+                        ) : (
+                          <span className="text-xs font-medium text-slate-400 font-mono">No phone listed</span>
+                        )}
                       </div>
                       
                       {/* Secondary Contact (Only residents can see secondary contact info, security can't as per rules) */}
                       {session.role !== 'security' && owner.secondaryContact && (
                         <div className="flex items-center space-x-1.5">
-                          <Phone className="w-3.5 h-3.5 text-slate-300" />
-                          <span className="text-xs text-slate-500 font-mono italic">
+                          <Phone className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+                          <a
+                            href={`tel:+91${owner.secondaryContact}`}
+                            className="text-xs text-slate-500 hover:text-indigo-600 hover:underline font-mono italic transition"
+                            title={`Click to call alternate contact`}
+                          >
                             Alt: +91 {owner.secondaryContact}
-                          </span>
+                          </a>
                         </div>
                       )}
                     </div>

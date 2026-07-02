@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { FlatOwner, Visitor, UserSession } from '../types';
+import { FlatOwner, Visitor, UserSession, Announcement } from '../types';
 import { 
   verifyCredentials,
   getAllOwners,
@@ -16,7 +16,10 @@ import {
   respondToVisitorRequest,
   deleteVisitorRequest,
   seedDatabaseIfNeeded,
-  subscribeToVisitorNotifications
+  subscribeToVisitorNotifications,
+  subscribeToAllVisitors,
+  sendBroadcastAnnouncement,
+  subscribeToAnnouncements
 } from './firebase';
 
 export async function detectServerEnvironment(): Promise<boolean> {
@@ -96,9 +99,22 @@ export const api = {
     return subscribeToVisitorNotifications(wing, flatNo, onUpdate, onError);
   },
 
+  // Real-time all-visitors subscription
+  subscribeAllVisitors: (
+    onUpdate: (visitors: Visitor[]) => void,
+    onError?: (error: Error) => void
+  ) => {
+    return subscribeToAllVisitors(onUpdate, onError);
+  },
+
   // Respond to a visitor request
-  respondToVisitor: async (visitorId: string, status: 'approved' | 'rejected'): Promise<{ success: boolean; visitor?: Visitor }> => {
-    return respondToVisitorRequest(visitorId, status);
+  respondToVisitor: async (
+    visitorId: string,
+    status: 'approved' | 'rejected',
+    respondedBy?: string,
+    rejectReason?: string
+  ): Promise<{ success: boolean; visitor?: Visitor }> => {
+    return respondToVisitorRequest(visitorId, status, respondedBy, rejectReason);
   },
 
   // Delete a visitor request/log
@@ -108,5 +124,26 @@ export const api = {
       return { success: true, message: 'Visitor request deleted successfully.' };
     }
     return { success: false, message: 'Failed to delete visitor request.' };
+  },
+
+  // Broadcast an announcement
+  sendAnnouncement: async (
+    target: 'all' | 'wing' | 'flat',
+    wing: 'A' | 'B' | '',
+    flatNo: number,
+    text: string,
+    sender: string
+  ): Promise<boolean> => {
+    return sendBroadcastAnnouncement(target, wing, flatNo, text, sender);
+  },
+
+  // Subscribe to real-time announcements
+  subscribeAnnouncements: (
+    wing: 'A' | 'B',
+    flatNo: number,
+    onUpdate: (announcements: Announcement[]) => void,
+    onError?: (error: Error) => void
+  ) => {
+    return subscribeToAnnouncements(wing, flatNo, onUpdate, onError);
   }
 };
