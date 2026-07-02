@@ -15,7 +15,8 @@ import {
   pollPendingVisitorAlerts,
   respondToVisitorRequest,
   deleteVisitorRequest,
-  seedDatabaseIfNeeded
+  seedDatabaseIfNeeded,
+  subscribeToVisitorNotifications
 } from './firebase';
 
 export async function detectServerEnvironment(): Promise<boolean> {
@@ -83,6 +84,16 @@ export const api = {
   // Poll for active/pending visitor alerts for a flat
   pollVisitorAlerts: async (wing: string, flatNo: number): Promise<Visitor[]> => {
     return pollPendingVisitorAlerts(wing, flatNo);
+  },
+
+  // Real-time notification subscription
+  subscribeNotifications: (
+    wing: string,
+    flatNo: number,
+    onUpdate: (visitors: Visitor[]) => void,
+    onError?: (error: Error) => void
+  ) => {
+    return subscribeToVisitorNotifications(wing, flatNo, onUpdate, onError);
   },
 
   // Respond to a visitor request

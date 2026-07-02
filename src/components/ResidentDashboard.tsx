@@ -165,18 +165,44 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
     }
   };
 
-  // Poll for alerts and fetch history on load
+  // Subscribe to real-time notifications and fetch initial history on load
   useEffect(() => {
-    checkVisitorAlerts();
+    if (!wing || !flatNo) return;
+
+    // Fetch initial guest history
     fetchMyGuestHistory();
 
-    const interval = setInterval(() => {
-      checkVisitorAlerts();
-      // Also poll history to update automatically on response
-      fetchMyGuestHistory();
-    }, 2000);
+    // Set up real-time listener on the 'notifications' collection
+    const unsubscribe = api.subscribeNotifications(
+      wing,
+      flatNo,
+      (pendingNotifications) => {
+        // Look for brand new pending visitors to trigger alerts
+        pendingNotifications.forEach((v) => {
+          if (!notifiedVisitorIds.current.has(v.id)) {
+            notifiedVisitorIds.current.add(v.id);
+            triggerNewVisitorNotification(v);
+          }
+        });
 
-    return () => clearInterval(interval);
+        setActivePoll(pendingNotifications);
+      },
+      (error) => {
+        console.error('Real-time notifications subscription failed, falling back to polling:', error);
+        // Fallback to manual polling ifSnapshot fails
+        checkVisitorAlerts();
+      }
+    );
+
+    // Maintain a slower polling interval (5 seconds) to update historical logs automatically
+    const historyInterval = setInterval(() => {
+      fetchMyGuestHistory();
+    }, 5000);
+
+    return () => {
+      unsubscribe();
+      clearInterval(historyInterval);
+    };
   }, [wing, flatNo]);
 
   // Respond to waiting visitor (Accept / Reject)

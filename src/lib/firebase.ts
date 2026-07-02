@@ -13,7 +13,9 @@ import {
   setDoc,
   deleteDoc,
   query,
-  limit
+  limit,
+  onSnapshot,
+  where
 } from 'firebase/firestore';
 import { FlatOwner, Visitor } from '../types';
 import { getInitialOwners } from '../data/ownersData';
@@ -255,6 +257,12 @@ export async function resetDatabaseToDefault(): Promise<boolean> {
     for (const d of visitorsSnap.docs) {
       await deleteDoc(doc(db, 'visitors', d.id));
     }
+
+    const notificationsCol = collection(db, 'notifications');
+    const notificationsSnap = await getDocs(notificationsCol);
+    for (const d of notificationsSnap.docs) {
+      await deleteDoc(doc(db, 'notifications', d.id));
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, 'all_collections');
   }
@@ -287,6 +295,24 @@ export async function registerVisitor(payload: any): Promise<Visitor> {
 
   try {
     await setDoc(doc(db, 'visitors', visitorId), newVisitor);
+    
+    // Explicitly write a document in the 'notifications' collection
+    await setDoc(doc(db, 'notifications', visitorId), {
+      id: visitorId,
+      visitorId,
+      fullName,
+      mobileNumber,
+      email: email || '',
+      wing,
+      flatNo: parseInt(flatNo, 10),
+      reason,
+      guestType,
+      photoUrl: photoUrl || '',
+      status: 'pending',
+      requestTime: newVisitor.requestTime,
+      flatOwnerName: newVisitor.flatOwnerName
+    });
+
     return newVisitor;
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `visitors/${visitorId}`);
@@ -377,6 +403,12 @@ export async function respondToVisitorRequest(visitorId: string, status: 'approv
 
   try {
     await setDoc(visitorRef, updated);
+
+    // Explicitly update the status in the 'notifications' collection
+    await setDoc(doc(db, 'notifications', visitorId), {
+      status,
+      respondedTime: updated.respondedTime
+    }, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `visitors/${visitorId}`);
   }
@@ -391,8 +423,45 @@ export async function deleteVisitorRequest(visitorId: string): Promise<boolean> 
   const visitorRef = doc(db, 'visitors', visitorId);
   try {
     await deleteDoc(visitorRef);
+    // Also delete the matching notification
+    await deleteDoc(doc(db, 'notifications', visitorId));
     return true;
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `visitors/${visitorId}`);
   }
+}
+
+/**
+ * Setup a real-time listener on pending notifications for a specific flat
+ */
+export function subscribeToVisitorNotifications(
+  wing: string,
+  flatNo: number,
+  onUpdate: (visitors: Visitor[]) => void,
+  onError?: (error: Error) => void
+) {
+  const notificationsCol = collection(db, 'notifications');
+  const q = query(
+    notificationsCol,
+    where('wing', '==', wing.toUpperCase()),
+    where('flatNo', '==', Number(flatNo)),
+    where('status', '==', 'pending')
+  );
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const pending: Visitor[] = [];
+      snapshot.forEach((docSnap) => {
+        pending.push(docSnap.data() as Visitor);
+      });
+      // Sort: Newest first (requestTime descending)
+      pending.sort((a, b) => new Date(b.requestTime).getTime() - new Date(a.requestTime).getTime());
+      onUpdate(pending);
+    },
+    (error) => {
+      console.error('Snapshot listener error:', error);
+      if (onError) onError(error);
+    }
+  );
 }
