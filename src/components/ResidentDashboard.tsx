@@ -8,6 +8,60 @@ import { Bell, ShieldAlert, Check, X, Users, Car, Phone, Lock, Eye, EyeOff, Clip
 import { FlatOwner, Visitor, Vehicle, UserSession } from '../types';
 import { api } from '../lib/api';
 
+const playChime = () => {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    const now = ctx.currentTime;
+    
+    // Play a friendly double chime/bell sound
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(587.33, now); // D5
+    gain1.gain.setValueAtTime(0, now);
+    gain1.gain.linearRampToValueAtTime(0.3, now + 0.05);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.8);
+    
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(880.00, now + 0.15); // A5
+    gain2.gain.setValueAtTime(0, now + 0.15);
+    gain2.gain.linearRampToValueAtTime(0.3, now + 0.2);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(now + 0.15);
+    osc2.stop(now + 1.0);
+  } catch (err) {
+    console.warn('Could not play notification sound:', err);
+  }
+};
+
+const triggerNewVisitorNotification = (visitor: Visitor) => {
+  playChime();
+  
+  if ('Notification' in window) {
+    if (Notification.permission === 'granted') {
+      try {
+        new Notification(`Orchid Heights Gatekeeper`, {
+          body: `${visitor.fullName} (${visitor.guestType}) is waiting at the gate for your approval!`,
+          tag: visitor.id,
+          requireInteraction: true
+        });
+      } catch (err) {
+        console.warn('Failed to construct desktop Notification:', err);
+      }
+    }
+  }
+};
+
 interface ResidentDashboardProps {
   session: UserSession;
   owners: FlatOwner[];
@@ -19,6 +73,9 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
 
   // Active visitor request state
   const [activePoll, setActivePoll] = useState<Visitor[]>([]);
+
+  // Track which visitors have already triggered audio/desktop notifications
+  const notifiedVisitorIds = React.useRef<Set<string>>(new Set());
 
   // Find current owner data
   const myOwnerData = owners.find((o) => o.wing === wing && o.flatNo === flatNo);
@@ -43,6 +100,13 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   const [guestHistory, setGuestHistory] = useState<Visitor[]>([]);
   const [loadingHistory, setLoadingHistory] = useState<boolean>(false);
 
+  // Request desktop notification permission on dashboard load
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch((err) => console.warn('Notification permission rejected:', err));
+    }
+  }, []);
+
   // Initialize form states from loaded database
   useEffect(() => {
     if (myOwnerData) {
@@ -55,6 +119,15 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
     if (!wing || !flatNo) return;
     try {
       const data = await api.pollVisitorAlerts(wing, flatNo);
+      
+      // Look for brand new pending visitors to trigger alerts
+      data.forEach((v) => {
+        if (!notifiedVisitorIds.current.has(v.id)) {
+          notifiedVisitorIds.current.add(v.id);
+          triggerNewVisitorNotification(v);
+        }
+      });
+
       setActivePoll(data);
     } catch (error) {
       console.error('Failed to poll visitor alerts:', error);
@@ -100,6 +173,24 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
       }
     } catch (error) {
       console.error('Failed to respond to visitor:', error);
+    }
+  };
+
+  // Delete historical visitor record
+  const handleDeleteHistoryRecord = async (id: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to delete the visitor log for "${name}" from your history?`)) {
+      return;
+    }
+    try {
+      const res = await api.deleteVisitor(id);
+      if (res.success) {
+        fetchMyGuestHistory();
+      } else {
+        alert(res.message || 'Failed to delete record.');
+      }
+    } catch (error) {
+      console.error('Failed to delete history:', error);
+      alert('Error deleting log. Please try again.');
     }
   };
 
@@ -528,9 +619,18 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
               {guestHistory.map((log) => (
                 <div
                   key={log.id}
-                  className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-3 hover:border-slate-300 transition"
+                  className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-3 hover:border-slate-300 transition relative overflow-hidden"
                 >
-                  <div className="flex items-center space-x-3">
+                  {/* Delete historical record icon */}
+                  <button
+                    onClick={() => handleDeleteHistoryRecord(log.id, log.fullName)}
+                    title="Delete visitor log"
+                    className="absolute top-3 right-3 text-slate-400 hover:text-red-500 hover:bg-slate-200/50 p-1 rounded-lg transition cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+
+                  <div className="flex items-center space-x-3 pr-6">
                     <img src={log.photoUrl} alt={log.fullName} className="w-11 h-11 rounded-lg object-cover border bg-slate-200 shrink-0" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">

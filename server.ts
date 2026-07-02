@@ -241,11 +241,11 @@ async function startServer() {
     let filtered = [...db.visitors];
 
     if (wing) {
-      filtered = filtered.filter((v) => v.wing === wing);
+      filtered = filtered.filter((v) => v.wing.toUpperCase() === (wing as string).toUpperCase());
     }
     if (flatNo) {
       const flatNum = parseInt(flatNo as string, 10);
-      filtered = filtered.filter((v) => v.flatNo === flatNum);
+      filtered = filtered.filter((v) => Number(v.flatNo) === flatNum);
     }
 
     // Newest first
@@ -266,7 +266,7 @@ async function startServer() {
 
     // Get any visitor for this flat that is 'pending'
     const pending = db.visitors.filter(
-      (v) => v.wing === wing && v.flatNo === flatNum && v.status === 'pending'
+      (v) => v.wing.toUpperCase() === wing.toUpperCase() && Number(v.flatNo) === flatNum && v.status === 'pending'
     );
 
     res.json(pending);
@@ -308,6 +308,18 @@ async function startServer() {
       fullName: visitor.fullName,
       respondedTime: visitor.respondedTime
     });
+  });
+
+  // Delete a visitor request (called by security or owners)
+  app.delete('/api/visitors/:id', (req, res) => {
+    const { id } = req.params;
+    const index = db.visitors.findIndex((v) => v.id === id);
+    if (index === -1) {
+      return res.status(404).json({ success: false, message: 'Visitor request not found.' });
+    }
+    db.visitors.splice(index, 1);
+    saveDatabase(db);
+    res.json({ success: true, message: 'Visitor request deleted successfully.' });
   });
 
   // --- VITE MIDDLEWARE SETUP ---

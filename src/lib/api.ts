@@ -93,11 +93,21 @@ async function safeRequest<T>(
       const errText = await response.text();
       throw new Error(errText || `Request failed with status ${response.status}`);
     }
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('text/html')) {
+      throw new TypeError('HTML response received instead of JSON');
+    }
     return await response.json() as T;
   } catch (error: any) {
-    // If it's a TypeError (failed to fetch/network error/CORS), set fallback and run local
-    if (error instanceof TypeError || error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
-      console.warn(`Connection failed to ${apiPath}. Falling back to browser-only database mode.`);
+    // If it's a TypeError (failed to fetch/network error/CORS/JSON syntax error), set fallback and run local
+    if (
+      error instanceof TypeError || 
+      error.message?.includes('Failed to fetch') || 
+      error.message?.includes('NetworkError') ||
+      error.message?.includes('Unexpected token') ||
+      error.message?.includes('is not valid JSON')
+    ) {
+      console.warn(`Connection failed to ${apiPath} (${error.message}). Falling back to browser-only database mode.`);
       useClientFallback = true;
       return localFallbackFn();
     }
@@ -263,10 +273,10 @@ export const api = {
       let filtered = [...db.visitors];
 
       if (params?.wing) {
-        filtered = filtered.filter((v) => v.wing === params.wing);
+        filtered = filtered.filter((v) => v.wing.toUpperCase() === params.wing.toUpperCase());
       }
       if (params?.flatNo) {
-        filtered = filtered.filter((v) => v.flatNo === params.flatNo);
+        filtered = filtered.filter((v) => Number(v.flatNo) === Number(params.flatNo));
       }
 
       filtered.sort((a, b) => new Date(b.requestTime).getTime() - new Date(a.requestTime).getTime());
@@ -284,7 +294,7 @@ export const api = {
     return safeRequest(`/api/visitors/poll/${wing}/${flatNo}`, { method: 'GET' }, () => {
       const db = getLocalDB();
       return db.visitors.filter(
-        (v) => v.wing === wing && v.flatNo === flatNo && v.status === 'pending'
+        (v) => v.wing.toUpperCase() === wing.toUpperCase() && Number(v.flatNo) === Number(flatNo) && v.status === 'pending'
       );
     });
   },
@@ -306,6 +316,22 @@ export const api = {
       visitor.respondedTime = new Date().toISOString();
       saveLocalDB(db);
       return { success: true, visitor };
+    });
+  },
+
+  // Delete a visitor request/log
+  deleteVisitor: async (visitorId: string): Promise<{ success: boolean; message: string }> => {
+    return safeRequest(`/api/visitors/${visitorId}`, {
+      method: 'DELETE'
+    }, () => {
+      const db = getLocalDB();
+      const index = db.visitors.findIndex((v) => v.id === visitorId);
+      if (index === -1) {
+        return { success: false, message: 'Visitor request not found.' };
+      }
+      db.visitors.splice(index, 1);
+      saveLocalDB(db);
+      return { success: true, message: 'Visitor request deleted successfully.' };
     });
   }
 };

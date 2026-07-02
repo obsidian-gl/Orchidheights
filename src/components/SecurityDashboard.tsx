@@ -4,10 +4,49 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Shield, Plus, Clock, Search, AlertCircle, CheckCircle2, XCircle, FileSpreadsheet, User, Phone, Check } from 'lucide-react';
+import { Shield, Plus, Clock, Search, AlertCircle, CheckCircle2, XCircle, FileSpreadsheet, User, Phone, Check, Trash2 } from 'lucide-react';
 import { FlatOwner, Visitor } from '../types';
 import WebcamCapture from './WebcamCapture';
 import { api } from '../lib/api';
+
+const playDecisionSound = (status: 'approved' | 'rejected') => {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    const now = ctx.currentTime;
+    
+    if (status === 'approved') {
+      // Pleasant upward success chord
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.frequency.setValueAtTime(523.25, now); // C5
+      osc1.frequency.exponentialRampToValueAtTime(659.25, now + 0.15); // E5
+      osc1.frequency.exponentialRampToValueAtTime(783.99, now + 0.3); // G5
+      gain1.gain.setValueAtTime(0.15, now);
+      gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start(now);
+      osc1.stop(now + 0.45);
+    } else {
+      // Downward buzzer warning tone
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'sawtooth';
+      osc1.frequency.setValueAtTime(220.00, now); // A3
+      osc1.frequency.linearRampToValueAtTime(146.83, now + 0.35); // D3
+      gain1.gain.setValueAtTime(0.12, now);
+      gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start(now);
+      osc1.stop(now + 0.4);
+    }
+  } catch (err) {
+    console.warn('Could not play decision sound:', err);
+  }
+};
 
 interface SecurityDashboardProps {
   owners: FlatOwner[];
@@ -62,6 +101,8 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
             if (oldVis && oldVis.status === 'pending' && newVis.status !== 'pending') {
               // Trigger visual alert
               setShowStatusAlert(newVis);
+              // Play success/warning chime!
+              playDecisionSound(newVis.status);
             }
           });
           return newVisitsData(data);
@@ -81,6 +122,24 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
     const interval = setInterval(fetchVisitors, 2000);
     return () => clearInterval(interval);
   }, []);
+
+  // Handle deleting a visitor request/log
+  const handleDeleteVisitor = async (id: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to permanently delete the visitor record for "${name}"?`)) {
+      return;
+    }
+    try {
+      const res = await api.deleteVisitor(id);
+      if (res.success) {
+        fetchVisitors();
+      } else {
+        alert(res.message || 'Failed to delete visitor record.');
+      }
+    } catch (error) {
+      console.error('Failed to delete visitor:', error);
+      alert('Error deleting visitor. Please try again.');
+    }
+  };
 
   const handleRegisterVisitor = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -372,7 +431,16 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
                   key={v.id}
                   className="bg-amber-50/45 border-l-4 border-amber-500 border border-slate-200/80 p-4 rounded-xl space-y-3 relative overflow-hidden"
                 >
-                  <div className="flex items-center space-x-3">
+                  {/* Cancel/delete request button top right */}
+                  <button
+                    onClick={() => handleDeleteVisitor(v.id, v.fullName)}
+                    title="Cancel visitor request"
+                    className="absolute top-2 right-2 text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+
+                  <div className="flex items-center space-x-3 pr-6">
                     <img src={v.photoUrl} alt={v.fullName} className="w-12 h-12 rounded-lg object-cover bg-slate-200 shrink-0 border" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
@@ -449,6 +517,7 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
                   <th className="py-3 px-4">Reason / Guest Type</th>
                   <th className="py-3 px-4">Timing</th>
                   <th className="py-3 px-4 text-center">Status</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
@@ -487,6 +556,15 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
                       }`}>
                         <span>{log.status === 'approved' ? '● Approved' : '● Rejected'}</span>
                       </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-right">
+                      <button
+                        onClick={() => handleDeleteVisitor(log.id, log.fullName)}
+                        title="Delete visitor record"
+                        className="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition cursor-pointer inline-flex items-center"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </td>
                   </tr>
                 ))}
