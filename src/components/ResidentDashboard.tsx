@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, ShieldAlert, Check, X, Users, Car, Phone, Lock, Eye, EyeOff, ClipboardList, AlertCircle, Trash2, Plus, Clock } from 'lucide-react';
 import { FlatOwner, Visitor, Vehicle, UserSession } from '../types';
+import { api } from '../lib/api';
 
 interface ResidentDashboardProps {
   session: UserSession;
@@ -53,11 +54,8 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   const checkVisitorAlerts = async () => {
     if (!wing || !flatNo) return;
     try {
-      const response = await fetch(`/api/visitors/poll/${wing}/${flatNo}`);
-      if (response.ok) {
-        const data = await response.json();
-        setActivePoll(data);
-      }
+      const data = await api.pollVisitorAlerts(wing, flatNo);
+      setActivePoll(data);
     } catch (error) {
       console.error('Failed to poll visitor alerts:', error);
     }
@@ -68,11 +66,8 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
     if (!wing || !flatNo) return;
     setLoadingHistory(true);
     try {
-      const response = await fetch(`/api/visitors?wing=${wing}&flatNo=${flatNo}`);
-      if (response.ok) {
-        const data = await response.json();
-        setGuestHistory(data);
-      }
+      const data = await api.getVisitors({ wing, flatNo });
+      setGuestHistory(data);
     } catch (error) {
       console.error('Failed to fetch personal history:', error);
     } finally {
@@ -97,13 +92,8 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   // Respond to waiting visitor (Accept / Reject)
   const handleRespond = async (visitorId: string, status: 'approved' | 'rejected') => {
     try {
-      const response = await fetch(`/api/visitors/${visitorId}/respond`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status })
-      });
-
-      if (response.ok) {
+      const res = await api.respondToVisitor(visitorId, status);
+      if (res.success) {
         // Optimistic state clear
         setActivePoll((prev) => prev.filter((v) => v.id !== visitorId));
         fetchMyGuestHistory();
@@ -128,23 +118,18 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
         password: updatedData.phone !== undefined ? undefined : newPassword || undefined // send password if set
       };
 
-      const response = await fetch(`/api/owners/${wing}/${flatNo}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      const res = await api.updateOwner(wing, flatNo, payload);
 
-      if (response.ok) {
+      if (res.success) {
         setSettingsSuccess(successMsg);
         if (newPassword) setNewPassword(''); // clear password input
         onRefreshOwners(); // trigger reload in App.tsx
       } else {
-        const err = await response.json();
-        setSettingsError(err.message || 'Failed to update profile.');
+        setSettingsError(res.message || 'Failed to update profile.');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Profile update error:', error);
-      setSettingsError('Server connection error.');
+      setSettingsError(error.message || 'Server connection error.');
     } finally {
       setSavingSettings(false);
     }

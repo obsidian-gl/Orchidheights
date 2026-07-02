@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { Key, Edit3, Trash2, Database, AlertTriangle, ShieldCheck, Check, RefreshCw, X, Search, Phone } from 'lucide-react';
 import { FlatOwner } from '../types';
+import { api } from '../lib/api';
 
 interface AdminDashboardProps {
   owners: FlatOwner[];
@@ -60,17 +61,12 @@ export default function AdminDashboard({ owners, onRefreshOwners }: AdminDashboa
     setPassLoading(true);
 
     try {
-      const response = await fetch('/api/admin/change-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          wing: selectedWing,
-          flatNo: selectedFlatNo,
-          newPassword: newPassword.trim()
-        })
+      const data = await api.changePassword({
+        wing: selectedWing,
+        flatNo: selectedFlatNo,
+        newPassword: newPassword.trim()
       });
 
-      const data = await response.json();
       if (data.success) {
         setPassSuccess(`Password for Flat ${selectedWing}-${selectedFlatNo} updated successfully!`);
         setNewPassword('');
@@ -89,10 +85,7 @@ export default function AdminDashboard({ owners, onRefreshOwners }: AdminDashboa
     setResetLoading(true);
     setResetSuccess('');
     try {
-      const response = await fetch('/api/admin/reset-db', {
-        method: 'POST'
-      });
-      const data = await response.json();
+      const data = await api.resetDb();
       if (data.success) {
         setResetSuccess('System reset completely back to default Excel data!');
         setShowConfirmReset(false);
@@ -124,18 +117,13 @@ export default function AdminDashboard({ owners, onRefreshOwners }: AdminDashboa
     setEditLoading(true);
 
     try {
-      const response = await fetch(`/api/owners/${editOwner.wing}/${editOwner.flatNo}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nameEn: editNameEn.trim() || `Vacant / Owner Flat ${editOwner.wing}-${editOwner.flatNo}`,
-          nameGu: editNameGu.trim() || `ખાલી ફ્લેટ ${editOwner.wing}-${editOwner.flatNo}`,
-          phone: editPhone.trim(),
-          secondaryContact: editSecondary.trim()
-        })
+      const data = await api.updateOwner(editOwner.wing, editOwner.flatNo, {
+        nameEn: editNameEn.trim() || `Vacant / Owner Flat ${editOwner.wing}-${editOwner.flatNo}`,
+        nameGu: editNameGu.trim() || `ખાલી ફ્લેટ ${editOwner.wing}-${editOwner.flatNo}`,
+        phone: editPhone.trim(),
+        secondaryContact: editSecondary.trim()
       });
 
-      const data = await response.json();
       if (data.success) {
         setEditSuccess('Owner details saved successfully.');
         setTimeout(() => {

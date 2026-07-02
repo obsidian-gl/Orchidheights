@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { Shield, Plus, Clock, Search, AlertCircle, CheckCircle2, XCircle, FileSpreadsheet, User, Phone, Check } from 'lucide-react';
 import { FlatOwner, Visitor } from '../types';
 import WebcamCapture from './WebcamCapture';
+import { api } from '../lib/api';
 
 interface SecurityDashboardProps {
   owners: FlatOwner[];
@@ -51,8 +52,7 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
   // Fetch visitors list
   const fetchVisitors = async () => {
     try {
-      const response = await fetch('/api/visitors');
-      const data = await response.json();
+      const data = await api.getVisitors();
       if (Array.isArray(data)) {
         // Detect if any previously pending visitor got approved or rejected recently
         setVisitors((prev) => {
@@ -99,23 +99,19 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
     setSubmitting(true);
 
     try {
-      const response = await fetch('/api/visitors', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fullName: fullName.trim(),
-          mobileNumber: mobileNumber.trim(),
-          email: email.trim(),
-          wing,
-          flatNo,
-          reason: reason.trim(),
-          guestType,
-          photoUrl,
-          flatOwnerName
-        })
+      const visitor = await api.createVisitor({
+        fullName: fullName.trim(),
+        mobileNumber: mobileNumber.trim(),
+        email: email.trim(),
+        wing,
+        flatNo,
+        reason: reason.trim(),
+        guestType,
+        photoUrl,
+        flatOwnerName
       });
 
-      if (response.ok) {
+      if (visitor) {
         // Reset form
         setFullName('');
         setMobileNumber('');
@@ -130,12 +126,11 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
           trackerSection.scrollIntoView({ behavior: 'smooth' });
         }
       } else {
-        const errData = await response.json();
-        setFormError(errData.message || 'Failed to submit visitor request.');
+        setFormError('Failed to submit visitor request.');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Submit visitor error:', error);
-      setFormError('Server connection error. Please try again.');
+      setFormError(error.message || 'Server connection error. Please try again.');
     } finally {
       setSubmitting(false);
     }

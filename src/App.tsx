@@ -12,6 +12,7 @@ import SecurityDashboard from './components/SecurityDashboard';
 import ResidentDashboard from './components/ResidentDashboard';
 import AdminDashboard from './components/AdminDashboard';
 import Directory from './components/Directory';
+import { api, detectServerEnvironment } from './lib/api';
 
 export default function App() {
   // Session details stored in localStorage for persistent logins
@@ -33,12 +34,10 @@ export default function App() {
   const loadOwners = async () => {
     setLoadingOwners(true);
     try {
-      const response = await fetch('/api/owners');
-      if (response.ok) {
-        const data = await response.json();
-        if (Array.isArray(data)) {
-          setOwners(data);
-        }
+      await detectServerEnvironment();
+      const data = await api.getOwners();
+      if (Array.isArray(data)) {
+        setOwners(data);
       }
     } catch (error) {
       console.error('Failed to load owners directory:', error);

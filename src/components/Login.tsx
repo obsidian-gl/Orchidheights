@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { Shield, Home, Key, ArrowRight, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { UserSession } from '../types';
+import { api } from '../lib/api';
 
 interface LoginProps {
   onLoginSuccess: (session: UserSession) => void;
@@ -46,13 +47,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         ? { role: 'security', username, password: securityPassword }
         : { role: 'owner', wing, flatNo, password };
 
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await response.json();
+      const data = await api.login(payload);
 
       if (data.success && data.session) {
         onLoginSuccess(data.session);
