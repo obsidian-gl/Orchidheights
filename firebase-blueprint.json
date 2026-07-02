@@ -1,0 +1,80 @@
+{
+  "entities": {
+    "FlatOwner": {
+      "title": "FlatOwner",
+      "description": "Details of a flat owner/resident and their household",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "wing": { "type": "string" },
+        "flatNo": { "type": "integer" },
+        "nameEn": { "type": "string" },
+        "nameGu": { "type": "string" },
+        "phone": { "type": "string" },
+        "secondaryContact": { "type": "string" },
+        "members": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "vehicles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "plateNo": { "type": "string" },
+              "type": { "type": "string" }
+            }
+          }
+        }
+      },
+      "required": ["wing", "flatNo", "nameEn"]
+    },
+    "Visitor": {
+      "title": "Visitor",
+      "description": "Details of a visitor/guest trying to enter a flat",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fullName": { "type": "string" },
+        "mobileNumber": { "type": "string" },
+        "email": { "type": "string" },
+        "wing": { "type": "string" },
+        "flatNo": { "type": "integer" },
+        "reason": { "type": "string" },
+        "guestType": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "requestTime": { "type": "string", "format": "date-time" },
+        "respondedTime": { "type": "string", "format": "date-time" },
+        "flatOwnerName": { "type": "string" }
+      },
+      "required": ["fullName", "mobileNumber", "wing", "flatNo", "status", "requestTime"]
+    },
+    "Password": {
+      "title": "Password",
+      "description": "Passcode used to log in to specific flats",
+      "type": "object",
+      "properties": {
+        "wing": { "type": "string" },
+        "flatNo": { "type": "integer" },
+        "password": { "type": "string" }
+      },
+      "required": ["wing", "flatNo", "password"]
+    }
+  },
+  "firestore": {
+    "owners": {
+      "schema": "FlatOwner",
+      "description": "Directory of flat owners"
+    },
+    "visitors": {
+      "schema": "Visitor",
+      "description": "List of visitor gate requests"
+    },
+    "passwords": {
+      "schema": "Password",
+      "description": "Stored flat login passwords"
+    }
+  }
+}
