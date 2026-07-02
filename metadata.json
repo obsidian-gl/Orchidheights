@@ -1,0 +1,6 @@
+{
+  "name": "Orchid Heights Gatekeeper",
+  "description": "Smart Visitor Management and Gate Security System for Orchid Heights Apartments with Real-Time Resident Approvals.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
