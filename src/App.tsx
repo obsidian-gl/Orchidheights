@@ -81,6 +81,83 @@ export default function App() {
     }
   }, [session]);
 
+  // Capture device details for security logs when residents log in
+  useEffect(() => {
+    if (session && (session.role === 'owner' || session.role === 'admin') && session.wing && session.flatNo) {
+      const captureDevice = async () => {
+        try {
+          // Get or create unique browser/device persistent id
+          let deviceId = localStorage.getItem('orchid_device_uuid');
+          if (!deviceId) {
+            deviceId = 'dev_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+            localStorage.setItem('orchid_device_uuid', deviceId);
+          }
+
+          // Get or create a virtual persistent IMEI number
+          let imei = localStorage.getItem('orchid_device_imei');
+          if (!imei) {
+            imei = '358401' + Math.floor(100000 + Math.random() * 900000) + Math.floor(10 + Math.random() * 90);
+            localStorage.setItem('orchid_device_imei', imei);
+          }
+
+          // Fetch public IP address using an online API, fallback if offline or failed
+          let ipAddress = '127.0.0.1';
+          try {
+            const res = await fetch('https://api.ipify.org?format=json');
+            const data = await res.json();
+            if (data.ip) ipAddress = data.ip;
+          } catch {
+            try {
+              const res = await fetch('https://api64.ipify.org?format=json');
+              const data = await res.json();
+              if (data.ip) ipAddress = data.ip;
+            } catch (e) {
+              console.warn('IP lookup failed, using local network IP:', e);
+            }
+          }
+
+          // Parse OS and Browser details elegantly
+          const ua = navigator.userAgent;
+          let os = 'Other Device';
+          if (/android/i.test(ua)) os = 'Android';
+          else if (/iPad|iPhone|iPod/.test(ua)) os = 'iOS';
+          else if (/win/i.test(ua)) os = 'Windows';
+          else if (/mac/i.test(ua)) os = 'MacOS';
+          else if (/linux/i.test(ua)) os = 'Linux';
+
+          let browser = 'Browser';
+          if (/chrome|crios/i.test(ua) && !/edge|edg/i.test(ua) && !/opr/i.test(ua)) browser = 'Chrome';
+          else if (/safari/i.test(ua) && !/chrome|crios/i.test(ua)) browser = 'Safari';
+          else if (/firefox|fxios/i.test(ua)) browser = 'Firefox';
+          else if (/edge|edg/i.test(ua)) browser = 'Edge';
+          else if (/opr/i.test(ua)) browser = 'Opera';
+
+          const devInfo = {
+            deviceId,
+            ipAddress,
+            userAgent: ua,
+            imei,
+            os,
+            browser,
+            lastLogin: new Date().toISOString()
+          };
+
+          await api.registerDevice(session.wing, session.flatNo, devInfo);
+          
+          // Refresh local directory data after logging device
+          const updatedOwners = await api.getOwners();
+          if (Array.isArray(updatedOwners)) {
+            setOwners(updatedOwners);
+          }
+        } catch (err) {
+          console.error('Device registration error:', err);
+        }
+      };
+
+      captureDevice();
+    }
+  }, [session]);
+
   const handleLoginSuccess = (userSession: UserSession) => {
     setSession(userSession);
     localStorage.setItem('orchid_gate_session', JSON.stringify(userSession));

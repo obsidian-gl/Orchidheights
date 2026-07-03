@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { FlatOwner, Visitor, UserSession, Announcement } from '../types';
+import { FlatOwner, Visitor, UserSession, Announcement, DeviceInfo } from '../types';
 import { 
   verifyCredentials,
   getAllOwners,
@@ -19,7 +19,8 @@ import {
   subscribeToVisitorNotifications,
   subscribeToAllVisitors,
   sendBroadcastAnnouncement,
-  subscribeToAnnouncements
+  subscribeToAnnouncements,
+  registerUserDevice
 } from './firebase';
 
 export async function detectServerEnvironment(): Promise<boolean> {
@@ -110,11 +111,20 @@ export const api = {
   // Respond to a visitor request
   respondToVisitor: async (
     visitorId: string,
-    status: 'approved' | 'rejected',
+    status: 'approved' | 'rejected' | 'expired',
     respondedBy?: string,
     rejectReason?: string
   ): Promise<{ success: boolean; visitor?: Visitor }> => {
     return respondToVisitorRequest(visitorId, status, respondedBy, rejectReason);
+  },
+
+  // Register device details for security auditing
+  registerDevice: async (
+    wing: string,
+    flatNo: number,
+    device: DeviceInfo
+  ): Promise<void> => {
+    return registerUserDevice(wing, flatNo, device);
   },
 
   // Delete a visitor request/log

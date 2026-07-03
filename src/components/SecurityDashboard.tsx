@@ -9,7 +9,8 @@ import { FlatOwner, Visitor } from '../types';
 import WebcamCapture from './WebcamCapture';
 import { api, detectServerEnvironment } from '../lib/api';
 
-const playDecisionSound = (status: 'approved' | 'rejected') => {
+const playDecisionSound = (status: 'approved' | 'rejected' | 'expired') => {
+  if (status === 'expired') return;
   try {
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioContextClass) return;
@@ -54,6 +55,16 @@ interface SecurityDashboardProps {
 }
 
 export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityDashboardProps) {
+  // Expiry window (Configurable, default 15 mins)
+  const [expiryMinutes, setExpiryMinutes] = useState<number>(() => {
+    const saved = localStorage.getItem('orchid_expiry_window_min');
+    return saved ? parseInt(saved, 10) : 15;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('orchid_expiry_window_min', expiryMinutes.toString());
+  }, [expiryMinutes]);
+
   // Visitor Form State
   const [fullName, setFullName] = useState<string>('');
   const [mobileNumber, setMobileNumber] = useState<string>('');
@@ -158,6 +169,26 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
     return () => unsubscribe();
   }, []);
 
+  // Check for auto-expiration of pending visitors periodically (every 5 seconds)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = new Date().getTime();
+      const limitMs = expiryMinutes * 60 * 1000;
+      
+      visitors.forEach(async (v) => {
+        if (v.status === 'pending') {
+          const reqTime = new Date(v.requestTime).getTime();
+          if (now - reqTime > limitMs) {
+            console.log(`System: Visitor request for ${v.fullName} (id: ${v.id}) expired after ${expiryMinutes} minutes.`);
+            await api.respondToVisitor(v.id, 'expired', 'System Auto-Expiry');
+          }
+        }
+      });
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [visitors, expiryMinutes]);
+
   // Handle deleting a visitor request/log
   const handleDeleteVisitor = async (id: string, name: string) => {
     if (!window.confirm(`Are you sure you want to permanently delete the visitor record for "${name}"?`)) {
@@ -261,7 +292,28 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">Real-time gatekeeper monitoring and resident approvals.</p>
         </div>
-        <div>
+        <div className="flex flex-wrap items-center gap-4 sm:ml-auto">
+          {/* Configurable Auto-Expiry Window */}
+          <div className="flex items-center space-x-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm text-left">
+            <Clock className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+            <div>
+              <label className="block text-[8px] uppercase font-bold text-slate-400 tracking-wider">Auto-Expiry Window</label>
+              <select
+                value={expiryMinutes}
+                onChange={(e) => setExpiryMinutes(parseInt(e.target.value, 10))}
+                className="bg-transparent border-none text-xs font-bold text-slate-700 outline-none p-0 cursor-pointer"
+              >
+                <option value={1}>1 Min (Test)</option>
+                <option value={5}>5 Min</option>
+                <option value={10}>10 Min</option>
+                <option value={15}>15 Min (Default)</option>
+                <option value={30}>30 Min</option>
+                <option value={45}>45 Min</option>
+                <option value={60}>1 Hour</option>
+              </select>
+            </div>
+          </div>
+
           <button
             type="button"
             onClick={handleManualRefresh}
@@ -619,13 +671,39 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
                       )}
                     </td>
                     <td className="py-3.5 px-4 text-center">
-                      <span className={`inline-flex items-center space-x-1 text-[10px] font-bold px-2.5 py-1 rounded-full border ${
-                        log.status === 'approved'
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : 'bg-red-50 text-red-700 border-red-200'
-                      }`}>
-                        <span>{log.status === 'approved' ? '● Approved' : '● Rejected'}</span>
-                      </span>
+                      <div className="flex flex-col items-center gap-1.5 justify-center">
+                        <span className={`inline-flex items-center space-x-1 text-[10px] font-bold px-2.5 py-1 rounded-full border ${
+                          log.status === 'approved'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : log.status === 'expired'
+                            ? 'bg-amber-50 text-amber-600 border-amber-200'
+                            : 'bg-red-50 text-red-700 border-red-200'
+                        }`}>
+                          <span>{log.status === 'approved' ? '● Approved' : log.status === 'expired' ? '● Expired' : '● Rejected'}</span>
+                        </span>
+                        {log.status === 'expired' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFullName(log.fullName);
+                              setMobileNumber(log.mobileNumber);
+                              setEmail(log.email || '');
+                              setWing(log.wing);
+                              setFlatNo(log.flatNo);
+                              setReason(log.reason);
+                              setGuestType(log.guestType);
+                              setPhotoUrl(log.photoUrl);
+                              setVisitorCount(log.visitorCount || 1);
+                              window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 hover:text-indigo-900 text-[9px] font-bold px-2 py-0.5 rounded border border-indigo-100 transition flex items-center space-x-1 cursor-pointer"
+                            title="Prefill fields to re-submit request"
+                          >
+                            <RefreshCw className="w-2.5 h-2.5 shrink-0" />
+                            <span>Re-Submit</span>
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

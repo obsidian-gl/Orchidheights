@@ -230,6 +230,24 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
     };
   }, [wing, flatNo]);
 
+  // Check for auto-expiration on the resident dashboard for safety (redundancy)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = new Date().getTime();
+      const expiryMs = 15 * 60 * 1000; // 15 mins default
+      activePoll.forEach(async (v) => {
+        if (v.status === 'pending') {
+          const reqTime = new Date(v.requestTime).getTime();
+          if (now - reqTime > expiryMs) {
+            console.log(`Resident Dashboard: Auto-expiring visitor ${v.fullName}`);
+            await api.respondToVisitor(v.id, 'expired', 'System Auto-Expiry');
+          }
+        }
+      });
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [activePoll]);
+
   // Respond to waiting visitor (Accept / Reject)
   const handleRespond = async (visitorId: string, status: 'approved' | 'rejected', customReason?: string) => {
     try {
@@ -545,7 +563,9 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                   <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase font-mono ${
                     log.status === 'approved'
                       ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                      : 'bg-red-50 text-red-700 border border-red-100'
+                      : log.status === 'expired'
+                      ? 'bg-slate-50 text-slate-500 border border-slate-200'
+                      : 'bg-red-50 text-red-700 border-red-100'
                   }`}>
                     {log.status}
                   </span>

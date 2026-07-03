@@ -10,6 +10,16 @@ export interface Vehicle {
   brandModel: string;
 }
 
+export interface DeviceInfo {
+  deviceId: string;
+  ipAddress: string;
+  userAgent: string;
+  imei: string;
+  os: string;
+  browser: string;
+  lastLogin: string;
+}
+
 export interface FlatOwner {
   wing: 'A' | 'B';
   flatNo: number;
@@ -20,6 +30,7 @@ export interface FlatOwner {
   members: string[]; // max 2 members added by flat owner
   vehicles: Vehicle[];
   notificationsEnabled?: boolean; // toggle to enable/disable alerts
+  devices?: DeviceInfo[]; // Registered devices tracking
 }
 
 export interface Visitor {
@@ -32,7 +43,7 @@ export interface Visitor {
   reason: string;
   guestType: string; // e.g. milkman, guest, electrician, delivery, laundry, etc.
   photoUrl: string; // Base64 data URI or placeholder
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'expired';
   requestTime: string; // ISO timestamp
   respondedTime?: string; // ISO timestamp
   flatOwnerName: string;

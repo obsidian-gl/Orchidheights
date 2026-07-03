@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Search, Building, Phone, User, Car, Shield, Languages, HelpCircle } from 'lucide-react';
+import { Search, Building, Phone, User, Car, Shield, Languages, HelpCircle, Smartphone } from 'lucide-react';
 import { FlatOwner, UserSession } from '../types';
 
 interface DirectoryProps {
@@ -278,6 +278,36 @@ export default function Directory({ owners, session, onEditTrigger }: DirectoryP
                             <span className="font-mono font-bold bg-white text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded text-[10px] uppercase">
                               {v.plateNumber}
                             </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Registered Devices Audit Log (Secretary / Admin ONLY) */}
+                  {session.role === 'admin' && owner.devices && owner.devices.length > 0 && (
+                    <div className="border-t border-slate-100 pt-3">
+                      <span className="font-semibold text-slate-400 uppercase tracking-wider text-[10px] block mb-1.5 flex items-center">
+                        <Smartphone className="w-3 h-3 mr-1 text-slate-400 shrink-0" />
+                        <span>Registered Devices ({owner.devices.length}):</span>
+                      </span>
+                      <div className="space-y-2">
+                        {owner.devices.map((dev, idx) => (
+                          <div key={idx} className="bg-slate-50 border border-slate-200/60 p-2 rounded-xl text-[10px] text-slate-500 font-medium space-y-1">
+                            <div className="flex items-center justify-between text-slate-700">
+                              <span className="font-bold flex items-center">
+                                <span className="mr-1">{dev.os === 'Android' || dev.os === 'iOS' ? '📱' : '💻'}</span>
+                                {dev.os} • {dev.browser}
+                              </span>
+                              <span className="font-mono text-slate-400 text-[9px] uppercase">Logged In</span>
+                            </div>
+                            <p className="font-mono"><span className="text-slate-400">IMEI:</span> {dev.imei || 'Simulated'}</p>
+                            <p className="font-mono flex items-center justify-between">
+                              <span><span className="text-slate-400">IP:</span> {dev.ipAddress}</span>
+                              <span className="text-[9px] text-slate-400 bg-white border border-slate-200/50 px-1 py-0.5 rounded font-sans">
+                                {new Date(dev.lastLogin).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                              </span>
+                            </p>
                           </div>
                         ))}
                       </div>

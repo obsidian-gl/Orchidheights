@@ -17,7 +17,7 @@ import {
   onSnapshot,
   where
 } from 'firebase/firestore';
-import { FlatOwner, Visitor, Announcement } from '../types';
+import { FlatOwner, Visitor, Announcement, DeviceInfo } from '../types';
 import { getInitialOwners } from '../data/ownersData';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -70,11 +70,11 @@ export async function seedDatabaseIfNeeded() {
   const pathForSeed = 'owners';
   try {
     const ownersCol = collection(db, 'owners');
-    const q = query(ownersCol, limit(1));
+    const q = query(ownersCol, limit(96));
     const snap = await getDocs(q);
     
-    if (snap.empty) {
-      console.log('--- Seeding Firestore with default residents and passwords ---');
+    if (snap.size < 90) {
+      console.log('--- Seeding Firestore with default residents and passwords (size < 90) ---');
       const initialOwners = getInitialOwners();
       
       for (const owner of initialOwners) {
@@ -387,7 +387,7 @@ export async function pollPendingVisitorAlerts(wing: string, flatNo: number): Pr
  */
 export async function respondToVisitorRequest(
   visitorId: string,
-  status: 'approved' | 'rejected',
+  status: 'approved' | 'rejected' | 'expired',
   respondedBy?: string,
   rejectReason?: string
 ): Promise<{ success: boolean; visitor?: Visitor }> {
@@ -574,4 +574,34 @@ export function subscribeToAnnouncements(
       if (onError) onError(error);
     }
   );
+}
+
+/**
+ * Register or update a user's logged in device details
+ */
+export async function registerUserDevice(wing: string, flatNo: number, device: DeviceInfo): Promise<void> {
+  const id = `${wing}-${flatNo}`;
+  const ownerRef = doc(db, 'owners', id);
+  try {
+    const ownerSnap = await getDoc(ownerRef);
+    if (ownerSnap.exists()) {
+      const ownerData = ownerSnap.data() as FlatOwner;
+      const currentDevices = ownerData.devices || [];
+      
+      const existingIdx = currentDevices.findIndex((d) => d.deviceId === device.deviceId);
+      if (existingIdx > -1) {
+        currentDevices[existingIdx] = {
+          ...currentDevices[existingIdx],
+          ...device,
+          lastLogin: new Date().toISOString()
+        };
+      } else {
+        currentDevices.push(device);
+      }
+      
+      await setDoc(ownerRef, { devices: currentDevices }, { merge: true });
+    }
+  } catch (error) {
+    console.error('Failed to register user device:', error);
+  }
 }
