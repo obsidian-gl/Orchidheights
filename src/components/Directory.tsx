@@ -159,7 +159,7 @@ export default function Directory({ owners, session, onEditTrigger }: DirectoryP
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredOwners.map((owner) => {
-            const isVacant = !owner.phone || owner.nameEn.toLowerCase().includes('vacant');
+            const isVacant = owner.nameEn.toLowerCase().includes('vacant');
             const isAdminEdit = session.role === 'admin' && onEditTrigger;
 
             return (

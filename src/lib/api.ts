@@ -20,7 +20,8 @@ import {
   subscribeToAllVisitors,
   sendBroadcastAnnouncement,
   subscribeToAnnouncements,
-  registerUserDevice
+  registerUserDevice,
+  deregisterUserDevice
 } from './firebase';
 
 export async function detectServerEnvironment(): Promise<boolean> {
@@ -125,6 +126,15 @@ export const api = {
     device: DeviceInfo
   ): Promise<void> => {
     return registerUserDevice(wing, flatNo, device);
+  },
+
+  // Remote logout/de-register a device from a flat
+  deregisterDevice: async (wing: string, flatNo: number, deviceId: string): Promise<{ success: boolean; message: string }> => {
+    const success = await deregisterUserDevice(wing, flatNo, deviceId);
+    if (success) {
+      return { success: true, message: 'Device logged out and de-registered successfully.' };
+    }
+    return { success: false, message: 'Failed to de-register device.' };
   },
 
   // Delete a visitor request/log

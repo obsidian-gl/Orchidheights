@@ -141,6 +141,22 @@ export async function verifyCredentials(role: string, payload: any): Promise<{ s
         handleFirestoreError(error, OperationType.GET, `owners/${id}`);
       }
 
+      if (ownerData) {
+        const currentDevices = ownerData.devices || [];
+        const device = payload.device;
+        if (device && device.deviceId) {
+          const isRegistered = currentDevices.some((d) => d.deviceId === device.deviceId);
+          if (!isRegistered && currentDevices.length >= 2) {
+            return {
+              success: false,
+              code: 'DEVICE_LIMIT_EXCEEDED',
+              devices: currentDevices,
+              message: '2 devices are already signed in for this flat — log out from one first.'
+            } as any;
+          }
+        }
+      }
+
       const isB1104Admin = wing === 'B' && flatNum === 1104;
 
       return {
@@ -172,6 +188,15 @@ export async function getAllOwners(): Promise<FlatOwner[]> {
     snap.forEach((docSnap) => {
       owners.push(docSnap.data() as FlatOwner);
     });
+    
+    // Sort sequentially: Wing A first, then Wing B, then by Flat Number
+    owners.sort((a, b) => {
+      if (a.wing !== b.wing) {
+        return a.wing.localeCompare(b.wing);
+      }
+      return a.flatNo - b.flatNo;
+    });
+    
     return owners;
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, 'owners');
@@ -604,4 +629,25 @@ export async function registerUserDevice(wing: string, flatNo: number, device: D
   } catch (error) {
     console.error('Failed to register user device:', error);
   }
+}
+
+/**
+ * Deregister/logout a user's logged in device details remotely
+ */
+export async function deregisterUserDevice(wing: string, flatNo: number, deviceId: string): Promise<boolean> {
+  const id = `${wing}-${flatNo}`;
+  const ownerRef = doc(db, 'owners', id);
+  try {
+    const ownerSnap = await getDoc(ownerRef);
+    if (ownerSnap.exists()) {
+      const ownerData = ownerSnap.data() as FlatOwner;
+      const currentDevices = ownerData.devices || [];
+      const updatedDevices = currentDevices.filter((d) => d.deviceId !== deviceId);
+      await setDoc(ownerRef, { devices: updatedDevices }, { merge: true });
+      return true;
+    }
+  } catch (error) {
+    console.error('Failed to deregister user device:', error);
+  }
+  return false;
 }
