@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { FlatOwner, Visitor, UserSession, Announcement, DeviceInfo } from '../types';
+import { FlatOwner, Visitor, UserSession, Announcement, DeviceInfo, Complaint, FinancialReport, EssentialContact } from '../types';
 import { 
   verifyCredentials,
   getAllOwners,
@@ -21,7 +21,17 @@ import {
   sendBroadcastAnnouncement,
   subscribeToAnnouncements,
   registerUserDevice,
-  deregisterUserDevice
+  deregisterUserDevice,
+  getEssentialContacts,
+  saveEssentialContact,
+  deleteEssentialContact,
+  getComplaintsList,
+  createComplaint,
+  updateComplaintStatus,
+  deleteComplaint,
+  getFinancialReportsList,
+  createFinancialReport,
+  deleteFinancialReport
 } from './firebase';
 
 export async function detectServerEnvironment(): Promise<boolean> {
@@ -165,5 +175,41 @@ export const api = {
     onError?: (error: Error) => void
   ) => {
     return subscribeToAnnouncements(wing, flatNo, onUpdate, onError);
+  },
+
+  // Essential Contacts
+  getEssentialContacts: async (): Promise<EssentialContact[]> => {
+    return getEssentialContacts();
+  },
+  saveEssentialContact: async (contact: EssentialContact): Promise<boolean> => {
+    return saveEssentialContact(contact);
+  },
+  deleteEssentialContact: async (id: string): Promise<boolean> => {
+    return deleteEssentialContact(id);
+  },
+
+  // Complaints
+  getComplaints: async (): Promise<Complaint[]> => {
+    return getComplaintsList();
+  },
+  createComplaint: async (payload: { flatId: string; title: string; description: string; mediaUrl?: string }): Promise<Complaint> => {
+    return createComplaint(payload);
+  },
+  updateComplaintStatus: async (id: string, status: 'open' | 'in-progress' | 'resolved', resolvedBy?: string): Promise<boolean> => {
+    return updateComplaintStatus(id, status, resolvedBy);
+  },
+  deleteComplaint: async (id: string): Promise<boolean> => {
+    return deleteComplaint(id);
+  },
+
+  // Financial Reports
+  getFinancialReports: async (): Promise<FinancialReport[]> => {
+    return getFinancialReportsList();
+  },
+  createFinancialReport: async (payload: { month: string; year: number; title: string; description: string; pdfUrl?: string; totalExpense: number; uploadedBy?: string }): Promise<FinancialReport> => {
+    return createFinancialReport(payload);
+  },
+  deleteFinancialReport: async (id: string): Promise<boolean> => {
+    return deleteFinancialReport(id);
   }
 };

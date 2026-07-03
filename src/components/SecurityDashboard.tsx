@@ -49,12 +49,107 @@ const playDecisionSound = (status: 'approved' | 'rejected' | 'expired') => {
   }
 };
 
+const TRANSLATIONS = {
+  EN: {
+    panelTitle: "Gate Security Control Panel",
+    panelSub: "Real-time gatekeeper monitoring and resident approvals.",
+    expiryLabel: "Auto-Expiry Window",
+    manualRefresh: "Manual Refresh",
+    syncing: "Syncing...",
+    newGateEntry: "New Gate Entry",
+    newGateEntrySub: "Register visitor details to request approval from flat owner.",
+    visitorName: "Visitor Name",
+    visitorNamePlace: "Full name of guest",
+    mobileNumber: "Mobile Number",
+    mobileNumberPlace: "10-digit mobile number",
+    wing: "Wing",
+    flatNo: "Flat No",
+    guestType: "Guest Type",
+    reason: "Reason to Visit",
+    reasonPlace: "e.g. Parcel delivery, family",
+    email: "Email",
+    optional: "(Optional)",
+    numVisitors: "Number of Visitors",
+    targetOwner: "Target Flat Owner",
+    ownerActive: "Owner Active",
+    noOwner: "No Owner",
+    sendRequest: "Send Gate Entry Request",
+    sending: "Sending...",
+    activeTracker: "Active Approval Tracker",
+    activeTrackerSub: "Live status of sent requests. Instruct visitor to wait.",
+    approved: "Approved",
+    rejected: "Rejected",
+    pending: "Pending",
+    acknowledgeOpen: "Acknowledge & Open Gate",
+    delivery: "Delivery / Courier",
+    guest: "Guest / Friend",
+    electrician: "Electrician / Repair",
+    milkman: "Milkman / Newspaper",
+    maid: "Maid / Laundry",
+    cabinet: "Service Agent",
+    other: "Other Visitor"
+  },
+  GU: {
+    panelTitle: "ગેટ સિક્યુરિટી કંટ્રોલ પેનલ",
+    panelSub: "રહેવાસીઓની પરવાનગી મેળવવા માટેની લાઈવ સુરક્ષા સિસ્ટમ.",
+    expiryLabel: "ઓટો-સમાપ્તિ સમય",
+    manualRefresh: "રીફ્રેશ કરો",
+    syncing: "લોડ થાય છે...",
+    newGateEntry: "નવી ગેટ એન્ટ્રી દાખલ કરો",
+    newGateEntrySub: "ફ્લેટ માલિક પાસેથી મંજૂરી મેળવવા માટે મુલાકાતીની વિગતો અહીં લખો.",
+    visitorName: "મુલાકાતીનું નામ",
+    visitorNamePlace: "મુલાકાતીનું આખું નામ લખો",
+    mobileNumber: "મોબાઇલ નંબર",
+    mobileNumberPlace: "૧૦-અંકનો મોબાઇલ નંબર લખો",
+    wing: "વિંગ",
+    flatNo: "FLAT નંબર",
+    guestType: "મુલાકાતીનો પ્રકાર",
+    reason: "મુલાકાત લેવાનું કારણ",
+    reasonPlace: "દા.ત. પાર્સલ ડિલિવરી, સગા-સંબંધી",
+    email: "ઇમેઇલ",
+    optional: "(વૈકલ્પિક)",
+    numVisitors: "મુલાકાતીઓની સંખ્યા",
+    targetOwner: "લક્ષ્ય ફ્લેટના માલિક",
+    ownerActive: "માલિક હાજર છે",
+    noOwner: "કોઈ માલિક નથી",
+    sendRequest: "રહેવાસીને પરવાનગી માટે મોકલો",
+    sending: "મોકલી રહ્યું છે...",
+    activeTracker: "ચાલુ મંજૂરીઓનું લિસ્ટ",
+    activeTrackerSub: "મોકલેલી વિનંતીઓની લાઈવ સ્થિતિ. મુલાકાતીને રાહ જોવાનું કહો.",
+    approved: "✅ પ્રવેશ મંજૂર છે",
+    rejected: "❌ પ્રવેશ અસ્વીકાર છે",
+    pending: "⏳ રાહ જુઓ (બાકી છે)",
+    acknowledgeOpen: "સમજાઈ ગયું - ગેટ ખોલો",
+    delivery: "📦 ડિલિવરી / કુરિયર",
+    guest: "👋 મહેમાન / મિત્ર",
+    electrician: "⚡ ઇલેક્ટ્રિશિયન / કામકાજ",
+    milkman: "🥛 દૂધવાળો / પેપરવાળો",
+    maid: "🧹 ઘરઘાટી / કામવાળા",
+    cabinet: "🛠️ સર્વિસ એજન્ટ",
+    other: "👤 અન્ય મુલાકાતી"
+  }
+};
+
 interface SecurityDashboardProps {
   owners: FlatOwner[];
   onRefreshOwners: () => void;
 }
 
 export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityDashboardProps) {
+  const [lang, setLang] = useState<'EN' | 'GU'>(() => {
+    return (localStorage.getItem('orchid_sec_lang') as 'EN' | 'GU') || 'GU';
+  });
+
+  const t = (key: keyof typeof TRANSLATIONS.EN) => {
+    return TRANSLATIONS[lang][key] || TRANSLATIONS.EN[key];
+  };
+
+  const toggleLang = () => {
+    const next = lang === 'EN' ? 'GU' : 'EN';
+    setLang(next);
+    localStorage.setItem('orchid_sec_lang', next);
+  };
+
   // Expiry window (Configurable, default 15 mins)
   const [expiryMinutes, setExpiryMinutes] = useState<number>(() => {
     const saved = localStorage.getItem('orchid_expiry_window_min');
@@ -288,16 +383,25 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
         <div className="text-left">
           <h1 className="font-display font-bold text-xl text-slate-800 tracking-tight flex items-center space-x-2">
             <span className="inline-block w-2.5 h-2.5 bg-indigo-600 rounded-full animate-pulse"></span>
-            <span>Gate Security Control Panel</span>
+            <span>{t('panelTitle')}</span>
           </h1>
-          <p className="text-xs text-slate-400 mt-0.5">Real-time gatekeeper monitoring and resident approvals.</p>
+          <p className="text-xs text-slate-400 mt-0.5">{t('panelSub')}</p>
         </div>
         <div className="flex flex-wrap items-center gap-4 sm:ml-auto">
+          {/* Language Toggle Button */}
+          <button
+            type="button"
+            onClick={toggleLang}
+            className="w-full sm:w-auto bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-150 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center space-x-2 transition cursor-pointer shadow-sm"
+          >
+            <span>🌐 {lang === 'EN' ? 'ગુજરાતી' : 'English'}</span>
+          </button>
+
           {/* Configurable Auto-Expiry Window */}
           <div className="flex items-center space-x-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm text-left">
             <Clock className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
             <div>
-              <label className="block text-[8px] uppercase font-bold text-slate-400 tracking-wider">Auto-Expiry Window</label>
+              <label className="block text-[8px] uppercase font-bold text-slate-400 tracking-wider">{t('expiryLabel')}</label>
               <select
                 value={expiryMinutes}
                 onChange={(e) => setExpiryMinutes(parseInt(e.target.value, 10))}
@@ -321,7 +425,7 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
             className="w-full sm:w-auto bg-slate-50 hover:bg-slate-100 active:bg-slate-200 text-slate-700 hover:text-slate-900 border border-slate-200 hover:border-slate-300 disabled:opacity-60 px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center space-x-2 transition cursor-pointer shadow-sm"
           >
             <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${isRefreshing ? 'animate-spin text-indigo-600' : ''}`} />
-            <span>{isRefreshing ? 'Syncing...' : 'Manual Refresh'}</span>
+            <span>{isRefreshing ? t('syncing') : t('manualRefresh')}</span>
           </button>
         </div>
       </div>
@@ -349,7 +453,7 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
               onClick={() => setShowStatusAlert(null)}
               className="bg-white/20 hover:bg-white/35 border border-white/20 text-white font-semibold text-xs px-4 py-2 rounded-lg transition"
             >
-              Acknowledge & Open Gate
+              {t('acknowledgeOpen')}
             </button>
           </div>
         </div>
@@ -365,8 +469,8 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
               <Shield className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="font-display font-bold text-lg text-slate-800">New Gate Entry</h2>
-              <p className="text-xs text-slate-500">Register visitor details to request approval from flat owner.</p>
+              <h2 className="font-display font-bold text-lg text-slate-800">{t('newGateEntry')}</h2>
+              <p className="text-xs text-slate-500">{t('newGateEntrySub')}</p>
             </div>
           </div>
 
@@ -389,11 +493,11 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
             {/* Core details */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Visitor Name <span className="text-red-500">*</span></label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">{t('visitorName')} <span className="text-red-500">*</span></label>
                 <input
                   type="text"
                   required
-                  placeholder="Full name of guest"
+                  placeholder={t('visitorNamePlace')}
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl py-2.5 px-3.5 text-sm font-medium transition outline-none"
@@ -401,11 +505,11 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Mobile Number <span className="text-red-500">*</span></label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">{t('mobileNumber')} <span className="text-red-500">*</span></label>
                 <input
                   type="tel"
                   required
-                  placeholder="10-digit mobile number"
+                  placeholder={t('mobileNumberPlace')}
                   value={mobileNumber}
                   onChange={(e) => setMobileNumber(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl py-2.5 px-3.5 text-sm font-medium transition outline-none"
@@ -416,7 +520,7 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {/* Destination */}
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Wing <span className="text-red-500">*</span></label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">{t('wing')} <span className="text-red-500">*</span></label>
                 <select
                   value={wing}
                   onChange={(e) => setWing(e.target.value as 'A' | 'B')}
@@ -428,7 +532,7 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Flat No <span className="text-red-500">*</span></label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">{t('flatNo')} <span className="text-red-500">*</span></label>
                 <select
                   value={flatNo}
                   onChange={(e) => setFlatNo(parseInt(e.target.value, 10))}
@@ -441,19 +545,19 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Guest Type <span className="text-red-500">*</span></label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">{t('guestType')} <span className="text-red-500">*</span></label>
                 <select
                   value={guestType}
                   onChange={(e) => setGuestType(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl py-2.5 px-3.5 text-sm font-medium transition outline-none"
                 >
-                  <option value="Delivery">Delivery / Courier</option>
-                  <option value="Guest">Guest / Friend</option>
-                  <option value="Electrician">Electrician / Repair</option>
-                  <option value="Milkman">Milkman / Newspaper</option>
-                  <option value="Maid">Maid / Laundry</option>
-                  <option value="Cabinet">Service Agent</option>
-                  <option value="Other">Other Visitor</option>
+                  <option value="Delivery">{t('delivery')}</option>
+                  <option value="Guest">{t('guest')}</option>
+                  <option value="Electrician">{t('electrician')}</option>
+                  <option value="Milkman">{t('milkman')}</option>
+                  <option value="Maid">{t('maid')}</option>
+                  <option value="Cabinet">{t('cabinet')}</option>
+                  <option value="Other">{t('other')}</option>
                 </select>
               </div>
             </div>
@@ -461,7 +565,7 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
             {/* Display looked-up Owner Name */}
             <div className="bg-slate-50 border border-slate-200/60 p-4 rounded-xl flex items-center justify-between">
               <div>
-                <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Target Flat Owner</p>
+                <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">{t('targetOwner')}</p>
                 <p className="text-sm font-bold text-slate-800">{flatOwnerName}</p>
               </div>
               <span className={`text-[10px] font-bold px-2 py-1 rounded-md ${
@@ -469,17 +573,17 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
                   ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
                   : 'bg-amber-50 text-amber-700 border border-amber-100'
               }`}>
-                {currentOwner && !currentOwner.nameEn.toLowerCase().includes('vacant') ? 'Owner Active' : 'No Owner'}
+                {currentOwner && !currentOwner.nameEn.toLowerCase().includes('vacant') ? t('ownerActive') : t('noOwner')}
               </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Reason to Visit <span className="text-red-500">*</span></label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">{t('reason')} <span className="text-red-500">*</span></label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Parcel delivery, family"
+                  placeholder={t('reasonPlace')}
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl py-2.5 px-3.5 text-sm font-medium transition outline-none"
@@ -487,7 +591,7 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Email <span className="text-slate-400 font-normal">(Optional)</span></label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">{t('email')} <span className="text-slate-400 font-normal">{t('optional')}</span></label>
                 <input
                   type="email"
                   placeholder="visitor@email.com"
@@ -498,7 +602,7 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Number of Visitors <span className="text-red-500">*</span></label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">{t('numVisitors')} <span className="text-red-500">*</span></label>
                 <input
                   type="number"
                   min="1"
@@ -521,7 +625,7 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
               ) : (
                 <>
                   <Plus className="w-4 h-4" />
-                  <span>Send Entry Approval Request</span>
+                  <span>{submitting ? t('sending') : t('sendRequest')}</span>
                 </>
               )}
             </button>
@@ -532,20 +636,20 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
         <div id="active-tracker" className="lg:col-span-5 bg-white border border-slate-200 rounded-2xl shadow-sm p-6 text-left">
           <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-100">
             <div>
-              <h3 className="font-display font-bold text-base text-slate-800">Pending Approvals</h3>
-              <p className="text-xs text-slate-400 mt-0.5">Live awaiting responses from residents.</p>
+              <h3 className="font-display font-bold text-base text-slate-800">{t('activeTracker')}</h3>
+              <p className="text-xs text-slate-400 mt-0.5">{t('activeTrackerSub')}</p>
             </div>
             <span className="font-mono bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold px-2.5 py-1 rounded-full flex items-center space-x-1">
               <span className="w-2 h-2 bg-amber-500 rounded-full animate-ping"></span>
-              <span>{pendingVisitors.length} waiting</span>
+              <span>{pendingVisitors.length} {lang === 'EN' ? 'waiting' : 'બાકી'}</span>
             </span>
           </div>
 
           {pendingVisitors.length === 0 ? (
             <div className="py-12 text-center text-slate-400">
               <CheckCircle2 className="w-10 h-10 text-emerald-100 mx-auto mb-3" />
-              <p className="text-sm font-semibold text-slate-700">No Pending Visitors</p>
-              <p className="text-xs text-slate-400 mt-1">All registered visitors have been resolved or are cleared.</p>
+              <p className="text-sm font-semibold text-slate-700">{lang === 'EN' ? 'No Pending Visitors' : 'કોઈ બાકી વિનંતી નથી'}</p>
+              <p className="text-xs text-slate-400 mt-1">{lang === 'EN' ? 'All registered visitors have been resolved or are cleared.' : 'બધા મુલાકાતીઓને મંજૂરી મળી ગઈ છે અથવા પૂર્ણ છે.'}</p>
             </div>
           ) : (
             <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">

@@ -8,44 +8,73 @@ import { Bell, ShieldAlert, Check, X, Users, Car, Phone, Lock, Eye, EyeOff, Clip
 import { FlatOwner, Visitor, Vehicle, UserSession, Announcement } from '../types';
 import { api, detectServerEnvironment } from '../lib/api';
 
-const playChime = () => {
+let alarmIntervalId: any = null;
+let alarmAudioContext: AudioContext | null = null;
+let alarmStateListener: ((active: boolean) => void) | null = null;
+
+const playHighFrequencyAlarm = () => {
+  if (alarmIntervalId) return; // already playing
   try {
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioContextClass) return;
     const ctx = new AudioContextClass();
-    const now = ctx.currentTime;
-    
-    // Play a friendly double chime/bell sound
-    const osc1 = ctx.createOscillator();
-    const gain1 = ctx.createGain();
-    osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(587.33, now); // D5
-    gain1.gain.setValueAtTime(0, now);
-    gain1.gain.linearRampToValueAtTime(0.3, now + 0.05);
-    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
-    osc1.connect(gain1);
-    gain1.connect(ctx.destination);
-    osc1.start(now);
-    osc1.stop(now + 0.8);
-    
-    const osc2 = ctx.createOscillator();
-    const gain2 = ctx.createGain();
-    osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(880.00, now + 0.15); // A5
-    gain2.gain.setValueAtTime(0, now + 0.15);
-    gain2.gain.linearRampToValueAtTime(0.3, now + 0.2);
-    gain2.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
-    osc2.connect(gain2);
-    gain2.connect(ctx.destination);
-    osc2.start(now + 0.15);
-    osc2.stop(now + 1.0);
+    alarmAudioContext = ctx;
+
+    let toggle = true;
+    alarmIntervalId = setInterval(() => {
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      
+      osc.type = 'sine';
+      // Emergency high frequency (alternates between 2800Hz and 3200Hz to grab attention instantly)
+      osc.frequency.setValueAtTime(toggle ? 3200 : 2800, now);
+      
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.4, now + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.4);
+      toggle = !toggle;
+    }, 500);
+
+    if (alarmStateListener) {
+      alarmStateListener(true);
+    }
+
+    // Auto-stop after 25 seconds
+    setTimeout(() => {
+      stopHighFrequencyAlarm();
+    }, 25000);
   } catch (err) {
-    console.warn('Could not play notification sound:', err);
+    console.warn('Could not play high frequency alarm sound:', err);
+  }
+};
+
+const stopHighFrequencyAlarm = () => {
+  if (alarmIntervalId) {
+    clearInterval(alarmIntervalId);
+    alarmIntervalId = null;
+  }
+  if (alarmAudioContext) {
+    try {
+      alarmAudioContext.close();
+    } catch (e) {}
+    alarmAudioContext = null;
+  }
+  if (alarmStateListener) {
+    alarmStateListener(false);
   }
 };
 
 const triggerNewVisitorNotification = (visitor: Visitor) => {
-  playChime();
+  playHighFrequencyAlarm();
   
   if ('Notification' in window) {
     if (Notification.permission === 'granted') {
@@ -82,6 +111,23 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
 
   // Active visitor request state
   const [activePoll, setActivePoll] = useState<Visitor[]>([]);
+  const [isAlarmActive, setIsAlarmActive] = useState<boolean>(false);
+
+  useEffect(() => {
+    alarmStateListener = (active) => {
+      setIsAlarmActive(active);
+    };
+    return () => {
+      alarmStateListener = null;
+    };
+  }, []);
+
+  // Stop alarm if no more active pending visitors are present
+  useEffect(() => {
+    if (activePoll.length === 0) {
+      stopHighFrequencyAlarm();
+    }
+  }, [activePoll]);
 
   // Track which visitors have already triggered audio/desktop notifications
   const notifiedVisitorIds = React.useRef<Set<string>>(new Set());
@@ -250,6 +296,7 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
 
   // Respond to waiting visitor (Accept / Reject)
   const handleRespond = async (visitorId: string, status: 'approved' | 'rejected', customReason?: string) => {
+    stopHighFrequencyAlarm();
     try {
       const responderName = session.ownerName || `Owner of Flat ${wing}-${flatNo}`;
       const res = await api.respondToVisitor(visitorId, status, responderName, customReason || '');
@@ -373,6 +420,26 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   return (
     <div className="space-y-8 text-slate-800">
       
+      {isAlarmActive && (
+        <div className="bg-red-600 border border-red-700 text-white font-bold p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 animate-pulse shadow-lg">
+          <div className="flex items-center space-x-3 text-left">
+            <span className="w-3 h-3 bg-white rounded-full animate-ping shrink-0"></span>
+            <div>
+              <p className="text-sm font-black tracking-tight flex items-center gap-1.5">
+                <span>🚨 VISITOR ALARM RINGING!</span>
+              </p>
+              <p className="text-[10px] text-red-100 font-medium">A high frequency emergency alert is playing to grab your attention.</p>
+            </div>
+          </div>
+          <button
+            onClick={() => stopHighFrequencyAlarm()}
+            className="w-full sm:w-auto bg-white text-red-600 hover:bg-red-50 text-xs font-extrabold uppercase px-5 py-2.5 rounded-xl shadow-md transition-all duration-150 transform hover:scale-[1.02] cursor-pointer"
+          >
+            Silence Alarm
+          </button>
+        </div>
+      )}
+
       {/* Top Header Controls: Manual Refresh & Sync */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-white border border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm gap-4">
         <div className="text-left">

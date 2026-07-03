@@ -70,3 +70,36 @@ export interface Announcement {
   timestamp: string;
   sender: string;
 }
+
+export interface Complaint {
+  id: string;
+  flatId: string;
+  title: string;
+  description: string;
+  mediaUrl?: string;
+  status: 'open' | 'in-progress' | 'resolved';
+  createdAt: string;
+  resolvedAt?: string;
+  resolvedBy?: string;
+}
+
+export interface FinancialReport {
+  id: string;
+  month: string;
+  year: number;
+  title: string;
+  description: string;
+  pdfUrl?: string;
+  totalExpense: number;
+  createdAt: string;
+  uploadedBy: string;
+}
+
+export interface EssentialContact {
+  id: string;
+  name: string;
+  category: 'Plumber' | 'Electrician' | 'Security' | 'Manager' | 'Gardener' | 'Other';
+  phone: string;
+  alternatePhone?: string;
+  active: boolean;
+}

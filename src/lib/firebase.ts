@@ -17,7 +17,7 @@ import {
   onSnapshot,
   where
 } from 'firebase/firestore';
-import { FlatOwner, Visitor, Announcement, DeviceInfo } from '../types';
+import { FlatOwner, Visitor, Announcement, DeviceInfo, Complaint, FinancialReport, EssentialContact } from '../types';
 import { getInitialOwners } from '../data/ownersData';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -650,4 +650,201 @@ export async function deregisterUserDevice(wing: string, flatNo: number, deviceI
     console.error('Failed to deregister user device:', error);
   }
   return false;
+}
+
+/**
+ * Fetch all essential contacts
+ */
+export async function getEssentialContacts(): Promise<EssentialContact[]> {
+  const contactsCol = collection(db, 'essential_contacts');
+  try {
+    const snap = await getDocs(contactsCol);
+    const contacts: EssentialContact[] = [];
+    snap.forEach((docSnap) => {
+      contacts.push(docSnap.data() as EssentialContact);
+    });
+
+    if (contacts.length === 0) {
+      // Seed with some default essential contacts
+      const defaultContacts: EssentialContact[] = [
+        { id: 'ec_1', name: 'Ramesh Patel', category: 'Plumber', phone: '9825012345', active: true },
+        { id: 'ec_2', name: 'Kishore Parmar', category: 'Electrician', phone: '9898022334', active: true },
+        { id: 'ec_3', name: 'Gate 1 Guard Duty', category: 'Security', phone: '9426055667', active: true },
+        { id: 'ec_4', name: 'Orchid Heights Manager', category: 'Manager', phone: '9712033445', active: true },
+        { id: 'ec_5', name: 'Manish Mali', category: 'Gardener', phone: '9033099881', active: true }
+      ];
+      for (const c of defaultContacts) {
+        await setDoc(doc(db, 'essential_contacts', c.id), c);
+        contacts.push(c);
+      }
+    }
+
+    return contacts;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'essential_contacts');
+  }
+}
+
+/**
+ * Add or update an essential contact
+ */
+export async function saveEssentialContact(contact: EssentialContact): Promise<boolean> {
+  try {
+    await setDoc(doc(db, 'essential_contacts', contact.id), contact);
+    return true;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `essential_contacts/${contact.id}`);
+  }
+}
+
+/**
+ * Delete an essential contact
+ */
+export async function deleteEssentialContact(contactId: string): Promise<boolean> {
+  try {
+    await deleteDoc(doc(db, 'essential_contacts', contactId));
+    return true;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `essential_contacts/${contactId}`);
+  }
+}
+
+/**
+ * Fetch all complaints
+ */
+export async function getComplaintsList(): Promise<Complaint[]> {
+  const complaintsCol = collection(db, 'complaints');
+  try {
+    const snap = await getDocs(complaintsCol);
+    const list: Complaint[] = [];
+    snap.forEach((docSnap) => {
+      list.push(docSnap.data() as Complaint);
+    });
+    // Sort newest first
+    list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return list;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'complaints');
+  }
+}
+
+/**
+ * Create a new complaint
+ */
+export async function createComplaint(payload: any): Promise<Complaint> {
+  const { flatId, title, description, mediaUrl } = payload;
+  const complaintId = 'comp_' + Math.random().toString(36).substring(2, 11);
+  const newComplaint: Complaint = {
+    id: complaintId,
+    flatId,
+    title,
+    description,
+    mediaUrl: mediaUrl || '',
+    status: 'open',
+    createdAt: new Date().toISOString()
+  };
+
+  try {
+    await setDoc(doc(db, 'complaints', complaintId), newComplaint);
+    return newComplaint;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `complaints/${complaintId}`);
+  }
+}
+
+/**
+ * Update complaint status
+ */
+export async function updateComplaintStatus(
+  complaintId: string,
+  status: 'open' | 'in-progress' | 'resolved',
+  resolvedBy?: string
+): Promise<boolean> {
+  const docRef = doc(db, 'complaints', complaintId);
+  try {
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const data = snap.data() as Complaint;
+      const updated: any = {
+        ...data,
+        status,
+        resolvedAt: status === 'resolved' ? new Date().toISOString() : null,
+        resolvedBy: status === 'resolved' ? resolvedBy || 'Secretary' : null
+      };
+      await setDoc(docRef, updated);
+      return true;
+    }
+    return false;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `complaints/${complaintId}`);
+  }
+}
+
+/**
+ * Delete a complaint
+ */
+export async function deleteComplaint(complaintId: string): Promise<boolean> {
+  try {
+    await deleteDoc(doc(db, 'complaints', complaintId));
+    return true;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `complaints/${complaintId}`);
+  }
+}
+
+/**
+ * Fetch all financial reports
+ */
+export async function getFinancialReportsList(): Promise<FinancialReport[]> {
+  const reportsCol = collection(db, 'financial_reports');
+  try {
+    const snap = await getDocs(reportsCol);
+    const reports: FinancialReport[] = [];
+    snap.forEach((docSnap) => {
+      reports.push(docSnap.data() as FinancialReport);
+    });
+    // Sort newest first
+    reports.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return reports;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'financial_reports');
+  }
+}
+
+/**
+ * Create a new financial report
+ */
+export async function createFinancialReport(payload: any): Promise<FinancialReport> {
+  const { month, year, title, description, pdfUrl, totalExpense, uploadedBy } = payload;
+  const reportId = 'fin_' + Math.random().toString(36).substring(2, 11);
+  const newReport: FinancialReport = {
+    id: reportId,
+    month,
+    year: parseInt(year, 10),
+    title,
+    description,
+    pdfUrl: pdfUrl || '',
+    totalExpense: parseFloat(totalExpense) || 0,
+    createdAt: new Date().toISOString(),
+    uploadedBy: uploadedBy || 'Rahul Popat (B-1104 / Admin)'
+  };
+
+  try {
+    await setDoc(doc(db, 'financial_reports', reportId), newReport);
+    return newReport;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `financial_reports/${reportId}`);
+  }
+}
+
+/**
+ * Delete a financial report
+ */
+export async function deleteFinancialReport(reportId: string): Promise<boolean> {
+  try {
+    await deleteDoc(doc(db, 'financial_reports', reportId));
+    return true;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `financial_reports/${reportId}`);
+  }
 }
