@@ -87,17 +87,18 @@ export default function App() {
       const captureDevice = async () => {
         try {
           // Get or create unique browser/device persistent id
-          let deviceId = localStorage.getItem('orchid_device_uuid');
+          const flatKey = `${session.wing}_${session.flatNo}`;
+          let deviceId = localStorage.getItem(`orchid_device_uuid_${flatKey}`);
           if (!deviceId) {
-            deviceId = 'dev_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-            localStorage.setItem('orchid_device_uuid', deviceId);
+            deviceId = 'dev_' + Math.random().toString(36).substring(2, 15) + '_' + flatKey;
+            localStorage.setItem(`orchid_device_uuid_${flatKey}`, deviceId);
           }
 
           // Get or create a virtual persistent IMEI number
-          let imei = localStorage.getItem('orchid_device_imei');
+          let imei = localStorage.getItem(`orchid_device_imei_${flatKey}`);
           if (!imei) {
             imei = '358401' + Math.floor(100000 + Math.random() * 900000) + Math.floor(10 + Math.random() * 90);
-            localStorage.setItem('orchid_device_imei', imei);
+            localStorage.setItem(`orchid_device_imei_${flatKey}`, imei);
           }
 
           // Fetch public IP address using an online API, fallback if offline or failed

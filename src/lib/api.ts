@@ -19,6 +19,7 @@ import {
   subscribeToVisitorNotifications,
   subscribeToAllVisitors,
   sendBroadcastAnnouncement,
+  deleteAnnouncement,
   subscribeToAnnouncements,
   registerUserDevice,
   deregisterUserDevice,
@@ -162,9 +163,16 @@ export const api = {
     wing: 'A' | 'B' | '',
     flatNo: number,
     text: string,
-    sender: string
+    sender: string,
+    imageUrl?: string,
+    videoUrl?: string
   ): Promise<boolean> => {
-    return sendBroadcastAnnouncement(target, wing, flatNo, text, sender);
+    return sendBroadcastAnnouncement(target, wing, flatNo, text, sender, imageUrl, videoUrl);
+  },
+
+  // Delete an announcement
+  deleteAnnouncement: async (id: string): Promise<boolean> => {
+    return deleteAnnouncement(id);
   },
 
   // Subscribe to real-time announcements

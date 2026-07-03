@@ -69,6 +69,8 @@ export interface Announcement {
   text: string;
   timestamp: string;
   sender: string;
+  imageUrl?: string;
+  videoUrl?: string;
 }
 
 export interface Complaint {

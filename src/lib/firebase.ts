@@ -538,7 +538,9 @@ export async function sendBroadcastAnnouncement(
   wing: 'A' | 'B' | '',
   flatNo: number,
   text: string,
-  sender: string
+  sender: string,
+  imageUrl?: string,
+  videoUrl?: string
 ): Promise<boolean> {
   const id = 'ann_' + Math.random().toString(36).substring(2, 11);
   const docRef = doc(db, 'announcements', id);
@@ -548,7 +550,9 @@ export async function sendBroadcastAnnouncement(
     target,
     text,
     timestamp: new Date().toISOString(),
-    sender
+    sender,
+    imageUrl: imageUrl || '',
+    videoUrl: videoUrl || ''
   };
   
   if (wing) payload.wing = wing as 'A' | 'B';
@@ -559,6 +563,19 @@ export async function sendBroadcastAnnouncement(
     return true;
   } catch (error) {
     console.error('Failed to send broadcast announcement:', error);
+    return false;
+  }
+}
+
+/**
+ * Delete an announcement / notice
+ */
+export async function deleteAnnouncement(id: string): Promise<boolean> {
+  try {
+    await deleteDoc(doc(db, 'announcements', id));
+    return true;
+  } catch (error) {
+    console.error('Failed to delete announcement:', error);
     return false;
   }
 }

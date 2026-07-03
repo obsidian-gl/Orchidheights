@@ -49,16 +49,17 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     try {
       let activeDevice: any = null;
       if (role === 'owner') {
-        let deviceId = localStorage.getItem('orchid_device_uuid');
+        const flatKey = `${wing}_${flatNo}`;
+        let deviceId = localStorage.getItem(`orchid_device_uuid_${flatKey}`);
         if (!deviceId) {
-          deviceId = 'dev_' + Math.random().toString(36).substring(2, 15);
-          localStorage.setItem('orchid_device_uuid', deviceId);
+          deviceId = 'dev_' + Math.random().toString(36).substring(2, 15) + '_' + flatKey;
+          localStorage.setItem(`orchid_device_uuid_${flatKey}`, deviceId);
         }
 
-        let imei = localStorage.getItem('orchid_device_imei');
+        let imei = localStorage.getItem(`orchid_device_imei_${flatKey}`);
         if (!imei) {
           imei = Array.from({ length: 15 }, (_, idx) => idx === 0 ? Math.floor(Math.random() * 8) + 1 : Math.floor(Math.random() * 10)).join('');
-          localStorage.setItem('orchid_device_imei', imei);
+          localStorage.setItem(`orchid_device_imei_${flatKey}`, imei);
         }
 
         const ua = navigator.userAgent;
