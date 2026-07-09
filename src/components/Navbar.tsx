@@ -84,19 +84,6 @@ export default function Navbar({ session, onLogout, activeTab, setActiveTab }: N
               </button>
             )}
 
-            {session.role === 'admin' && (
-              <button
-                onClick={() => setActiveTab('admin')}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
-                  activeTab === 'admin'
-                    ? 'bg-red-50 text-red-700'
-                    : 'text-slate-500 hover:text-red-600 hover:bg-red-50/50'
-                }`}
-              >
-                Admin Control
-              </button>
-            )}
-
             <button
               onClick={() => setActiveTab('directory')}
               className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
@@ -164,17 +151,6 @@ export default function Navbar({ session, onLogout, activeTab, setActiveTab }: N
               }`}
             >
               My Flat
-            </button>
-          )}
-
-          {session.role === 'admin' && (
-            <button
-              onClick={() => setActiveTab('admin')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                activeTab === 'admin' ? 'bg-red-50 text-red-700' : 'text-slate-500'
-              }`}
-            >
-              Admin
             </button>
           )}
 
