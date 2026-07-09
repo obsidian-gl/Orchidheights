@@ -52,7 +52,7 @@ export default function Navbar({ session, onLogout, activeTab, setActiveTab }: N
                 <span className="font-display font-bold text-lg text-slate-900 tracking-tight">Orchid Heights</span>
                 <span className="text-xs text-slate-500 font-medium hidden sm:inline">ઓર્કીડ હાઇટ્સ</span>
               </div>
-              <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Gate Security System</p>
+              <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider hidden sm:block">Gate Security System</p>
             </div>
           </div>
 
@@ -118,7 +118,7 @@ export default function Navbar({ session, onLogout, activeTab, setActiveTab }: N
             </div>
 
             {/* Profile Info */}
-            <div className="flex items-center space-x-2 bg-slate-50 border border-slate-100 p-1.5 pr-3 rounded-xl">
+            <div className="hidden md:flex items-center space-x-2 bg-slate-50 border border-slate-100 p-1.5 pr-3 rounded-xl">
               <div className="bg-white p-1 rounded-lg border border-slate-200">
                 {getRoleIcon()}
               </div>

@@ -50,6 +50,7 @@ export interface Visitor {
   visitorCount?: number; // total number of visitors
   respondedBy?: string; // name of who approved/rejected
   rejectReason?: string; // optional reason if rejected
+  deletedByResident?: boolean; // soft deletion tracker
 }
 
 export type UserRole = 'security' | 'owner' | 'admin';

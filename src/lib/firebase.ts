@@ -157,12 +157,10 @@ export async function verifyCredentials(role: string, payload: any): Promise<{ s
         }
       }
 
-      const isB1104Admin = wing === 'B' && flatNum === 1104;
-
       return {
         success: true,
         session: {
-          role: isB1104Admin ? 'admin' : 'owner',
+          role: 'owner',
           wing,
           flatNo: flatNum,
           ownerName: ownerData ? ownerData.nameEn : `Flat ${wing}-${flatNum}`
@@ -351,7 +349,7 @@ export async function registerVisitor(payload: any): Promise<Visitor> {
 /**
  * Fetch visitor list based on filters
  */
-export async function getVisitorsList(filters?: { wing?: string; flatNo?: number; limitNo?: number }): Promise<Visitor[]> {
+export async function getVisitorsList(filters?: { wing?: string; flatNo?: number; limitNo?: number; includeDeleted?: boolean }): Promise<Visitor[]> {
   const visitorsCol = collection(db, 'visitors');
   let snap;
   try {
@@ -365,6 +363,10 @@ export async function getVisitorsList(filters?: { wing?: string; flatNo?: number
   snap.forEach((docSnap) => {
     visitors.push(docSnap.data() as Visitor);
   });
+
+  if (!filters?.includeDeleted) {
+    visitors = visitors.filter((v) => !v.deletedByResident);
+  }
 
   if (filters?.wing) {
     visitors = visitors.filter((v) => v.wing.toUpperCase() === filters.wing!.toUpperCase());
@@ -460,12 +462,12 @@ export async function respondToVisitorRequest(
 export async function deleteVisitorRequest(visitorId: string): Promise<boolean> {
   const visitorRef = doc(db, 'visitors', visitorId);
   try {
-    await deleteDoc(visitorRef);
-    // Also delete the matching notification
+    await setDoc(visitorRef, { deletedByResident: true }, { merge: true });
+    // Also delete the matching notification so it doesn't pop up anymore
     await deleteDoc(doc(db, 'notifications', visitorId));
     return true;
   } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `visitors/${visitorId}`);
+    handleFirestoreError(error, OperationType.WRITE, `visitors/${visitorId}`);
   }
 }
 
@@ -576,6 +578,37 @@ export async function deleteAnnouncement(id: string): Promise<boolean> {
     return true;
   } catch (error) {
     console.error('Failed to delete announcement:', error);
+    return false;
+  }
+}
+
+/**
+ * Fetch all announcements for admin management
+ */
+export async function getAllAnnouncements(): Promise<Announcement[]> {
+  const annCol = collection(db, 'announcements');
+  try {
+    const snap = await getDocs(annCol);
+    const list: Announcement[] = [];
+    snap.forEach((docSnap) => {
+      list.push(docSnap.data() as Announcement);
+    });
+    list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return list;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'announcements');
+  }
+}
+
+/**
+ * Add or Edit an announcement
+ */
+export async function saveAnnouncement(ann: Announcement): Promise<boolean> {
+  try {
+    await setDoc(doc(db, 'announcements', ann.id), ann);
+    return true;
+  } catch (error) {
+    console.error('Failed to save announcement:', error);
     return false;
   }
 }
@@ -863,5 +896,22 @@ export async function deleteFinancialReport(reportId: string): Promise<boolean> 
     return true;
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `financial_reports/${reportId}`);
+  }
+}
+
+/**
+ * Get all changed and active passwords
+ */
+export async function getFlatPasswords(): Promise<Record<string, string>> {
+  const passwordsCol = collection(db, 'passwords');
+  try {
+    const snap = await getDocs(passwordsCol);
+    const passwords: Record<string, string> = {};
+    snap.forEach((docSnap) => {
+      passwords[docSnap.id] = docSnap.data().password;
+    });
+    return passwords;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'passwords');
   }
 }

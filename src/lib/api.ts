@@ -21,6 +21,8 @@ import {
   sendBroadcastAnnouncement,
   deleteAnnouncement,
   subscribeToAnnouncements,
+  getAllAnnouncements,
+  saveAnnouncement,
   registerUserDevice,
   deregisterUserDevice,
   getEssentialContacts,
@@ -32,7 +34,8 @@ import {
   deleteComplaint,
   getFinancialReportsList,
   createFinancialReport,
-  deleteFinancialReport
+  deleteFinancialReport,
+  getFlatPasswords
 } from './firebase';
 
 export async function detectServerEnvironment(): Promise<boolean> {
@@ -89,11 +92,12 @@ export const api = {
   },
 
   // Get Visitor list (with parameters)
-  getVisitors: async (params?: { wing?: string; flatNo?: number; limit?: number }): Promise<Visitor[]> => {
+  getVisitors: async (params?: { wing?: string; flatNo?: number; limit?: number; includeDeleted?: boolean }): Promise<Visitor[]> => {
     return getVisitorsList({
       wing: params?.wing,
       flatNo: params?.flatNo,
-      limitNo: params?.limit
+      limitNo: params?.limit,
+      includeDeleted: params?.includeDeleted
     });
   },
 
@@ -175,6 +179,14 @@ export const api = {
     return deleteAnnouncement(id);
   },
 
+  getAllAnnouncements: async (): Promise<Announcement[]> => {
+    return getAllAnnouncements();
+  },
+
+  saveAnnouncement: async (ann: Announcement): Promise<boolean> => {
+    return saveAnnouncement(ann);
+  },
+
   // Subscribe to real-time announcements
   subscribeAnnouncements: (
     wing: 'A' | 'B',
@@ -219,5 +231,10 @@ export const api = {
   },
   deleteFinancialReport: async (id: string): Promise<boolean> => {
     return deleteFinancialReport(id);
+  },
+
+  // Get Flat Passwords
+  getFlatPasswords: async (): Promise<Record<string, string>> => {
+    return getFlatPasswords();
   }
 };
