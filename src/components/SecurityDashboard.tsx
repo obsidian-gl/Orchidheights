@@ -4,10 +4,12 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Shield, Plus, Clock, Search, AlertCircle, CheckCircle2, XCircle, FileSpreadsheet, User, Phone, Check, Trash2, RefreshCw } from 'lucide-react';
-import { FlatOwner, Visitor } from '../types';
+import { Shield, Plus, Clock, Search, AlertCircle, CheckCircle2, XCircle, FileSpreadsheet, User, Phone, Check, Trash2, RefreshCw, Layers, Sparkles } from 'lucide-react';
+import { FlatOwner, Visitor, DailyHelper } from '../types';
 import WebcamCapture from './WebcamCapture';
 import { api, detectServerEnvironment } from '../lib/api';
+import { collection, onSnapshot, doc, setDoc, updateDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 const playDecisionSound = (status: 'approved' | 'rejected' | 'expired') => {
   if (status === 'expired') return;
@@ -160,6 +162,10 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
     localStorage.setItem('orchid_expiry_window_min', expiryMinutes.toString());
   }, [expiryMinutes]);
 
+  // Daily Helpers State (Subscribed in Security)
+  const [dailyHelpers, setDailyHelpers] = useState<DailyHelper[]>([]);
+  const [selectedHelperId, setSelectedHelperId] = useState<string | null>(null);
+
   // Visitor Form State
   const [fullName, setFullName] = useState<string>('');
   const [mobileNumber, setMobileNumber] = useState<string>('');
@@ -173,6 +179,11 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [formError, setFormError] = useState<string>('');
 
+  // Multi-flat Select & Search States
+  const [selectedFlats, setSelectedFlats] = useState<string[]>(['A-101']);
+  const [flatSearchQuery, setFlatSearchQuery] = useState<string>('');
+  const [isMultiSelectOpen, setIsMultiSelectOpen] = useState<boolean>(false);
+
   // Active Requests & Logs
   const [visitors, setVisitors] = useState<Visitor[]>([]);
   const [logsSearch, setLogsSearch] = useState<string>('');
@@ -183,6 +194,20 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
 
   // Manual sync/refresh state
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+
+  // Subscribe to Daily Helpers
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'daily_helpers'), (snapshot) => {
+      const list: DailyHelper[] = [];
+      snapshot.forEach((doc) => {
+        list.push({ id: doc.id, ...doc.data() } as DailyHelper);
+      });
+      setDailyHelpers(list);
+    }, (error) => {
+      console.error('SecurityDashboard: Error listening to helpers:', error);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const handleManualRefresh = async () => {
     setIsRefreshing(true);
@@ -197,38 +222,43 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
     }
   };
 
-  // Generate list of flats (101-104 up to 1201-1204)
-  const flats: number[] = [];
-  for (let floor = 1; floor <= 12; floor++) {
-    for (let flatIndex = 1; flatIndex <= 4; flatIndex++) {
-      flats.push(floor * 100 + flatIndex);
+  // Generate list of all 96 flats in the society (A-101 to B-1204)
+  const allSocietyFlats: string[] = [];
+  ['A', 'B'].forEach((w) => {
+    for (let floor = 1; floor <= 12; floor++) {
+      for (let fIdx = 1; fIdx <= 4; fIdx++) {
+        allSocietyFlats.push(`${w}-${floor * 100 + fIdx}`);
+      }
     }
-  }
+  });
 
-  // Lookup Owner Name dynamically based on wing & flatNo
+  // Flat selection list matching dropdowns
   const currentOwner = owners.find((o) => o.wing === wing && o.flatNo === flatNo);
   const flatOwnerName = currentOwner && !currentOwner.nameEn.toLowerCase().includes('vacant')
     ? `${currentOwner.nameEn} (${currentOwner.nameGu || ''})`
     : `Flat ${wing}-${flatNo}`;
+
+  // Keep selectedFlats synchronized with single dropdown values if multi-select is not modified/interacted with
+  useEffect(() => {
+    if (!isMultiSelectOpen && selectedFlats.length <= 1) {
+      setSelectedFlats([`${wing}-${flatNo}`]);
+    }
+  }, [wing, flatNo, isMultiSelectOpen]);
 
   // Fetch visitors list
   const fetchVisitors = async () => {
     try {
       const data = await api.getVisitors();
       if (Array.isArray(data)) {
-        // Detect if any previously pending visitor got approved or rejected recently
         setVisitors((prev) => {
-          // Check if any visitor that was pending is now approved/rejected
           data.forEach((newVis: Visitor) => {
             const oldVis = prev.find((v) => v.id === newVis.id);
             if (oldVis && oldVis.status === 'pending' && newVis.status !== 'pending') {
-              // Trigger visual alert
               setShowStatusAlert(newVis);
-              // Play success/warning chime!
               playDecisionSound(newVis.status);
             }
           });
-          return newVisitsData(data);
+          return data;
         });
       }
     } catch (error) {
@@ -236,21 +266,15 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
     }
   };
 
-  // Keep a stable version of visitor mapper helper
-  const newVisitsData = (data: Visitor[]): Visitor[] => data;
-
   // Subscribe to real-time status updates from Firestore
   useEffect(() => {
     const unsubscribe = api.subscribeAllVisitors(
       (data) => {
         setVisitors((prev) => {
-          // Detect if any previously pending visitor got approved or rejected recently
           data.forEach((newVis: Visitor) => {
             const oldVis = prev.find((v) => v.id === newVis.id);
             if (oldVis && oldVis.status === 'pending' && newVis.status !== 'pending') {
-              // Trigger visual alert
               setShowStatusAlert(newVis);
-              // Play success/warning chime!
               playDecisionSound(newVis.status);
             }
           });
@@ -302,53 +326,153 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
     }
   };
 
+  // Check if selected type is a recurring daily helper
+  const isDailyHelperType = ['Milkman', 'Maid', 'Vehicle Cleaner', 'Newspaper'].includes(guestType);
+
+  // Filter registered daily helpers in db matching currently selected helper role
+  const mappedHelpers = dailyHelpers.filter((h) => {
+    if (guestType === 'Maid') return h.role === 'Maid';
+    if (guestType === 'Milkman') return h.role === 'Milkman';
+    if (guestType === 'Vehicle Cleaner') return h.role === 'Car Cleaner';
+    if (guestType === 'Newspaper') return h.role === 'Newspaper Guy';
+    return false;
+  });
+
+  // Handle selecting a registered daily helper from the dropdown list
+  const handleHelperSelectionChange = (helperId: string) => {
+    setSelectedHelperId(helperId);
+    if (!helperId || helperId === 'new') {
+      // Clear fields for first-time registration of helper
+      setFullName('');
+      setMobileNumber('');
+      setPhotoUrl('');
+      setSelectedFlats([`${wing}-${flatNo}`]);
+      return;
+    }
+
+    const helper = dailyHelpers.find((h) => h.id === helperId);
+    if (helper) {
+      setFullName(helper.name);
+      setMobileNumber(helper.phone);
+      setPhotoUrl(helper.photoUrl || '');
+      setSelectedFlats(helper.flats || []);
+    }
+  };
+
+  // Reset helper selections when guestType is changed
+  useEffect(() => {
+    setSelectedHelperId(null);
+    setFullName('');
+    setMobileNumber('');
+    setPhotoUrl('');
+    setSelectedFlats([`${wing}-${flatNo}`]);
+  }, [guestType]);
+
   const handleRegisterVisitor = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
 
-    if (!fullName.trim() || !mobileNumber.trim() || !reason.trim()) {
-      setFormError('Please fill out all mandatory fields.');
+    if (!fullName.trim() || !mobileNumber.trim()) {
+      setFormError(lang === 'EN' ? 'Please fill out all mandatory fields.' : 'કૃપા કરીને બધી વિગતો ભરો.');
+      return;
+    }
+
+    if (selectedFlats.length === 0) {
+      setFormError(lang === 'EN' ? 'Please select at least one target flat.' : 'કૃપા કરીને ઓછામાં ઓછો એક ટાર્ગેટ ફ્લેટ પસંદ કરો.');
       return;
     }
 
     if (!photoUrl) {
-      setFormError('Visitor photo is mandatory. Please capture a webcam snap or select a preset avatar.');
+      setFormError(lang === 'EN' ? 'Visitor photo is mandatory.' : 'મુલાકાતીનો ફોટો લેવો ફરજિયાત છે.');
       return;
     }
 
     setSubmitting(true);
 
     try {
-      const visitor = await api.createVisitor({
-        fullName: fullName.trim(),
-        mobileNumber: mobileNumber.trim(),
-        email: email.trim(),
-        wing,
-        flatNo,
-        reason: reason.trim(),
-        guestType,
-        photoUrl,
-        flatOwnerName,
-        visitorCount
-      });
+      // Determine if this visitor goes into instant bypass or needs residents approvals
+      const isBypassed = selectedHelperId && selectedHelperId !== 'new';
+      const statusVal = isBypassed ? 'approved' : 'pending';
 
-      if (visitor) {
-        // Reset form
-        setFullName('');
-        setMobileNumber('');
-        setEmail('');
-        setReason('');
-        setPhotoUrl(''); // will reset capture preview
-        setVisitorCount(1);
-        fetchVisitors();
-        
-        // Scroll to active tracking list
-        const trackerSection = document.getElementById('active-tracker');
-        if (trackerSection) {
-          trackerSection.scrollIntoView({ behavior: 'smooth' });
+      // Register visitor logs for ALL selected flats
+      for (const flatId of selectedFlats) {
+        const parts = flatId.split('-');
+        const fWing = parts[0] as 'A' | 'B';
+        const fNo = parseInt(parts[1], 10);
+        const owner = owners.find((o) => o.wing === fWing && o.flatNo === fNo);
+        const ownerName = owner && !owner.nameEn.toLowerCase().includes('vacant')
+          ? `${owner.nameEn} (${owner.nameGu || ''})`
+          : `Flat ${fWing}-${fNo}`;
+
+        const visitorId = 'v_' + Math.random().toString(36).substr(2, 9);
+        const defaultReason = isDailyHelperType ? `${guestType} Entry` : reason.trim() || 'General Visit';
+
+        const newVisitor: any = {
+          id: visitorId,
+          fullName: fullName.trim(),
+          mobileNumber: mobileNumber.trim(),
+          email: email.trim() || '',
+          wing: fWing,
+          flatNo: fNo,
+          reason: defaultReason,
+          guestType,
+          photoUrl: photoUrl || '',
+          status: statusVal,
+          requestTime: new Date().toISOString(),
+          flatOwnerName: ownerName,
+          visitorCount: isDailyHelperType ? 1 : visitorCount
+        };
+
+        if (statusVal === 'approved') {
+          newVisitor.respondedTime = new Date().toISOString();
+          newVisitor.respondedBy = 'System Auto-Bypass';
         }
-      } else {
-        setFormError('Failed to submit visitor request.');
+
+        // Save visitor record in Firestore
+        await setDoc(doc(db, 'visitors', visitorId), newVisitor);
+
+        // If status is pending, also save a notification alert for the residents
+        if (statusVal === 'pending') {
+          await setDoc(doc(db, 'notifications', visitorId), {
+            id: visitorId,
+            type: 'visitor_request',
+            wing: fWing,
+            flatNo: fNo,
+            visitorName: fullName.trim(),
+            guestType,
+            timestamp: new Date().toISOString(),
+            acknowledged: false,
+            status: 'pending'
+          });
+        }
+      }
+
+      // If we registered / bypassed a helper, sync their new flat mappings immediately
+      if (isBypassed && selectedHelperId) {
+        await updateDoc(doc(db, 'daily_helpers', selectedHelperId), {
+          flats: selectedFlats
+        });
+      }
+
+      // Success effects
+      if (isBypassed) {
+        playDecisionSound('approved');
+      }
+
+      // Reset form fields
+      setFullName('');
+      setMobileNumber('');
+      setEmail('');
+      setReason('');
+      setPhotoUrl('');
+      setVisitorCount(1);
+      setSelectedHelperId(null);
+      setSelectedFlats([`${wing}-${flatNo}`]);
+
+      // Scroll to tracking section
+      const trackerSection = document.getElementById('active-tracker');
+      if (trackerSection) {
+        trackerSection.scrollIntoView({ behavior: 'smooth' });
       }
     } catch (error: any) {
       console.error('Submit visitor error:', error);
@@ -358,7 +482,18 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
     }
   };
 
-  // Extract pending and past visitors
+  // Toggle selected flats checklist
+  const toggleFlatSelection = (flatId: string) => {
+    setSelectedFlats((prev) => {
+      if (prev.includes(flatId)) {
+        return prev.filter((f) => f !== flatId);
+      } else {
+        return [...prev, flatId];
+      }
+    });
+  };
+
+  // Helper arrays
   const pendingVisitors = visitors.filter((v) => v.status === 'pending');
   const resolvedVisitors = visitors.filter((v) => v.status !== 'pending');
 
@@ -373,6 +508,12 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
       v.reason.toLowerCase().includes(q) ||
       v.guestType.toLowerCase().includes(q)
     );
+  });
+
+  // Filtered flats in the checklist search
+  const filteredFlatsChecklist = allSocietyFlats.filter((fId) => {
+    if (!flatSearchQuery.trim()) return true;
+    return fId.toLowerCase().includes(flatSearchQuery.toLowerCase().trim());
   });
 
   return (
@@ -490,6 +631,46 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
               guestType={guestType}
             />
 
+            {/* Custom Registered Helpers Dropdown for Recurring service types */}
+            {isDailyHelperType && (
+              <div className="bg-indigo-50/50 border border-indigo-100 p-4 rounded-xl space-y-3">
+                <div className="flex items-center space-x-1.5 text-indigo-800">
+                  <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
+                  <span className="font-display font-bold text-xs uppercase tracking-wider">
+                    {lang === 'EN' ? 'Registered Service Helper Directory' : 'રજિસ્ટર્ડ હેલ્પર ડાયરેક્ટરી'}
+                  </span>
+                </div>
+
+                <div>
+                  <select
+                    value={selectedHelperId || ''}
+                    onChange={(e) => handleHelperSelectionChange(e.target.value)}
+                    className="w-full bg-white border border-slate-200 hover:border-slate-300 rounded-xl py-2 px-3 text-xs font-semibold outline-none"
+                  >
+                    <option value="">{lang === 'EN' ? '-- Select Registered Helper --' : '-- રજિસ્ટર્ડ હેલ્પર પસંદ કરો --'}</option>
+                    <option value="new" className="text-indigo-600 font-bold">
+                      {lang === 'EN' ? '+ Register New Service Person / Helper' : '+ નવો હેલ્પર રજિસ્ટર કરો'}
+                    </option>
+                    {mappedHelpers.map((h) => (
+                      <option key={h.id} value={h.id}>
+                        {h.name} ({h.phone})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {selectedHelperId && selectedHelperId !== 'new' ? (
+                  <div className="bg-emerald-50 text-emerald-800 border border-emerald-150 p-2.5 rounded-lg text-[10px] leading-relaxed">
+                    <strong>✅ BYPASS ACTIVE:</strong> This helper is pre-approved by their mapped residents. Entry will be logged instantly and bypass gate approvals!
+                  </div>
+                ) : selectedHelperId === 'new' ? (
+                  <div className="bg-amber-50 text-amber-800 border border-amber-150 p-2.5 rounded-lg text-[10px] leading-relaxed">
+                    <strong>⚠️ FIRST TIME REGISTRATION:</strong> This helper will need to be approved by the target resident(s). Once approved, they will be registered for future instant bypasses!
+                  </div>
+                ) : null}
+              </div>
+            )}
+
             {/* Core details */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -499,8 +680,9 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
                   required
                   placeholder={t('visitorNamePlace')}
                   value={fullName}
+                  disabled={!!(selectedHelperId && selectedHelperId !== 'new')}
                   onChange={(e) => setFullName(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl py-2.5 px-3.5 text-sm font-medium transition outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white disabled:opacity-75 rounded-xl py-2.5 px-3.5 text-sm font-medium transition outline-none"
                 />
               </div>
 
@@ -511,108 +693,224 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
                   required
                   placeholder={t('mobileNumberPlace')}
                   value={mobileNumber}
+                  disabled={!!(selectedHelperId && selectedHelperId !== 'new')}
                   onChange={(e) => setMobileNumber(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl py-2.5 px-3.5 text-sm font-medium transition outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white disabled:opacity-75 rounded-xl py-2.5 px-3.5 text-sm font-medium transition outline-none"
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Destination */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">{t('wing')} <span className="text-red-500">*</span></label>
-                <select
-                  value={wing}
-                  onChange={(e) => setWing(e.target.value as 'A' | 'B')}
-                  className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl py-2.5 px-3.5 text-sm font-medium transition outline-none"
-                >
-                  <option value="A">Wing A</option>
-                  <option value="B">Wing B</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">{t('flatNo')} <span className="text-red-500">*</span></label>
-                <select
-                  value={flatNo}
-                  onChange={(e) => setFlatNo(parseInt(e.target.value, 10))}
-                  className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl py-2.5 px-3.5 text-sm font-medium transition outline-none"
-                >
-                  {flats.map((flat) => (
-                    <option key={flat} value={flat}>{flat}</option>
-                  ))}
-                </select>
-              </div>
-
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">{t('guestType')} <span className="text-red-500">*</span></label>
                 <select
                   value={guestType}
                   onChange={(e) => setGuestType(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl py-2.5 px-3.5 text-sm font-medium transition outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl py-2.5 px-3.5 text-sm font-medium transition outline-none cursor-pointer"
                 >
-                  <option value="Delivery">{t('delivery')}</option>
-                  <option value="Guest">{t('guest')}</option>
-                  <option value="Electrician">{t('electrician')}</option>
-                  <option value="Milkman">{t('milkman')}</option>
-                  <option value="Maid">{t('maid')}</option>
-                  <option value="Cabinet">{t('cabinet')}</option>
-                  <option value="Other">{t('other')}</option>
+                  <option value="Delivery">{lang === 'EN' ? 'Delivery / Courier' : '📦 ડિલિવરી / કુરિયર'}</option>
+                  <option value="Guest">{lang === 'EN' ? 'Guest / Friend' : '👋 મહેમાન / મિત્ર'}</option>
+                  <option value="Electrician">{lang === 'EN' ? 'Electrician / Repair' : '⚡ ઇલેક્ટ્રિશિયન / રિપેર'}</option>
+                  <option value="Milkman">{lang === 'EN' ? 'Milkman' : '🥛 દૂધવાળો (Milkman)'}</option>
+                  <option value="Maid">{lang === 'EN' ? 'Household Maid' : '🧹 કામવાળા બહેન (Maid)'}</option>
+                  <option value="Vehicle Cleaner">{lang === 'EN' ? 'Vehicle Cleaner' : '🚗 ગાડી સાફ કરવાવાળા'}</option>
+                  <option value="Newspaper">{lang === 'EN' ? 'Newspaper Delivery' : '📰 પેપરવાળો'}</option>
+                  <option value="Cabinet">{lang === 'EN' ? 'Service Agent' : '🛠️ સર્વિસ એજન્ટ'}</option>
+                  <option value="Other">{lang === 'EN' ? 'Other Visitor' : '👤 અન્ય મુલાકાતી'}</option>
                 </select>
               </div>
-            </div>
 
-            {/* Display looked-up Owner Name */}
-            <div className="bg-slate-50 border border-slate-200/60 p-4 rounded-xl flex items-center justify-between">
-              <div>
-                <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">{t('targetOwner')}</p>
-                <p className="text-sm font-bold text-slate-800">{flatOwnerName}</p>
-              </div>
-              <span className={`text-[10px] font-bold px-2 py-1 rounded-md ${
-                currentOwner && !currentOwner.nameEn.toLowerCase().includes('vacant')
-                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                  : 'bg-amber-50 text-amber-700 border border-amber-100'
-              }`}>
-                {currentOwner && !currentOwner.nameEn.toLowerCase().includes('vacant') ? t('ownerActive') : t('noOwner')}
-              </span>
-            </div>
+              {/* Single flat selectors which will update default target */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">{t('wing')} <span className="text-red-500">*</span></label>
+                  <select
+                    value={wing}
+                    onChange={(e) => setWing(e.target.value as 'A' | 'B')}
+                    className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl py-2.5 px-3 px-3.5 text-sm font-medium transition outline-none cursor-pointer"
+                  >
+                    <option value="A">Wing A</option>
+                    <option value="B">Wing B</option>
+                  </select>
+                </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">{t('reason')} <span className="text-red-500">*</span></label>
-                <input
-                  type="text"
-                  required
-                  placeholder={t('reasonPlace')}
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl py-2.5 px-3.5 text-sm font-medium transition outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">{t('email')} <span className="text-slate-400 font-normal">{t('optional')}</span></label>
-                <input
-                  type="email"
-                  placeholder="visitor@email.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl py-2.5 px-3.5 text-sm font-medium transition outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">{t('numVisitors')} <span className="text-red-500">*</span></label>
-                <input
-                  type="number"
-                  min="1"
-                  required
-                  value={visitorCount}
-                  onChange={(e) => setVisitorCount(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                  className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl py-2.5 px-3.5 text-sm font-medium transition outline-none"
-                />
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">{t('flatNo')} <span className="text-red-500">*</span></label>
+                  <select
+                    value={flatNo}
+                    onChange={(e) => setFlatNo(parseInt(e.target.value, 10))}
+                    className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl py-2.5 px-3 px-3.5 text-sm font-medium transition outline-none cursor-pointer"
+                  >
+                    {Array.from({ length: 12 }, (_, i) => i + 1).flatMap((floor) =>
+                      Array.from({ length: 4 }, (_, j) => floor * 100 + (j + 1))
+                    ).map((f) => (
+                      <option key={f} value={f}>{f}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
+
+            {/* Searchable Multi-Flat Selection Interface */}
+            <div className="border border-slate-200 rounded-xl overflow-hidden shadow-inner">
+              <button
+                type="button"
+                onClick={() => setIsMultiSelectOpen(!isMultiSelectOpen)}
+                className="w-full bg-slate-50 hover:bg-slate-100 py-3 px-4 flex items-center justify-between text-xs font-bold text-slate-700 border-b border-slate-200 transition"
+              >
+                <div className="flex items-center space-x-2">
+                  <Layers className="w-4 h-4 text-indigo-600 shrink-0" />
+                  <span>
+                    {lang === 'EN' ? 'Select Target Flat(s) - Multi-Select Enabled' : 'ટાર્ગેટ ફ્લેટ પસંદ કરો - મલ્ટી-સિલેક્ટ ચાલુ'}
+                  </span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <span className="bg-indigo-150 text-indigo-700 px-2 py-0.5 rounded-full text-[10px] font-extrabold">
+                    {selectedFlats.length} {lang === 'EN' ? 'Selected' : 'પસંદ કરેલ'}
+                  </span>
+                  <span>{isMultiSelectOpen ? '▲' : '▼'}</span>
+                </div>
+              </button>
+
+              {isMultiSelectOpen && (
+                <div className="p-4 space-y-4 bg-white text-left text-xs">
+                  {/* Search and control buttons */}
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder={lang === 'EN' ? "Search flats... (e.g. 1104, B-)" : "ફ્લેટ શોધો... (e.g. B-110)"}
+                        value={flatSearchQuery}
+                        onChange={(e) => setFlatSearchQuery(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg py-1.5 pl-8 pr-3 text-xs outline-none"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedFlats(allSocietyFlats)}
+                        className="bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg text-[10px] font-bold"
+                      >
+                        {lang === 'EN' ? 'Select All' : 'બધા પસંદ કરો'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedFlats([])}
+                        className="bg-slate-100 text-slate-600 px-3 py-1.5 rounded-lg text-[10px] font-bold"
+                      >
+                        {lang === 'EN' ? 'Deselect All' : 'ખાલી કરો'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Scrollable button grid for quick tablet tap selection */}
+                  <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-1.5 max-h-48 overflow-y-auto border border-slate-100 rounded-lg p-2 bg-slate-50 shadow-inner">
+                    {filteredFlatsChecklist.map((flatId) => {
+                      const isChecked = selectedFlats.includes(flatId);
+                      return (
+                        <button
+                          type="button"
+                          key={flatId}
+                          onClick={() => toggleFlatSelection(flatId)}
+                          className={`py-1 rounded font-mono text-[10px] font-bold border transition-all text-center cursor-pointer ${
+                            isChecked
+                              ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm font-black scale-95'
+                              : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
+                          }`}
+                        >
+                          {flatId}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Display list of selected flats as tags */}
+            {selectedFlats.length > 0 && (
+              <div className="space-y-1.5 text-left">
+                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                  {lang === 'EN' ? 'Target Flats & Wings:' : 'પસંદ કરેલા ફ્લેટ્સ:'}
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedFlats.map((fId) => (
+                    <span
+                      key={fId}
+                      className="inline-flex items-center space-x-1 font-mono font-bold bg-indigo-50 border border-indigo-150 text-indigo-700 px-2 py-0.5 rounded text-[10px]"
+                    >
+                      <span>{fId}</span>
+                      <button
+                        type="button"
+                        onClick={() => toggleFlatSelection(fId)}
+                        className="hover:text-red-600 font-extrabold focus:outline-none ml-1 text-slate-400"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Destination lookup banner for a single selected owner */}
+            {!isMultiSelectOpen && selectedFlats.length <= 1 && (
+              <div className="bg-slate-50 border border-slate-200/60 p-4 rounded-xl flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">{t('targetOwner')}</p>
+                  <p className="text-sm font-bold text-slate-800">{flatOwnerName}</p>
+                </div>
+                <span className={`text-[10px] font-bold px-2 py-1 rounded-md ${
+                  currentOwner && !currentOwner.nameEn.toLowerCase().includes('vacant')
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                    : 'bg-amber-50 text-amber-700 border border-amber-100'
+                }`}>
+                  {currentOwner && !currentOwner.nameEn.toLowerCase().includes('vacant') ? t('ownerActive') : t('noOwner')}
+                </span>
+              </div>
+            )}
+
+            {/* Render standard options when not a recurrent service person */}
+            {!isDailyHelperType && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">{t('reason')} <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    required={!isDailyHelperType}
+                    placeholder={t('reasonPlace')}
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl py-2.5 px-3.5 text-sm font-medium transition outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">{t('email')} <span className="text-slate-400 font-normal">{t('optional')}</span></label>
+                  <input
+                    type="email"
+                    placeholder="visitor@email.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl py-2.5 px-3.5 text-sm font-medium transition outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">{t('numVisitors')} <span className="text-red-500">*</span></label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={visitorCount}
+                    onChange={(e) => setVisitorCount(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                    className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl py-2.5 px-3.5 text-sm font-medium transition outline-none"
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Submit Action */}
             <button
@@ -625,7 +923,12 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
               ) : (
                 <>
                   <Plus className="w-4 h-4" />
-                  <span>{submitting ? t('sending') : t('sendRequest')}</span>
+                  <span>
+                    {selectedHelperId && selectedHelperId !== 'new'
+                      ? (lang === 'EN' ? 'Acknowledge & Register Entry (Approved)' : 'નોંધણી કરો અને પ્રવેશ મંજૂર કરો')
+                      : t('sendRequest')
+                    }
+                  </span>
                 </>
               )}
             </button>

@@ -110,6 +110,13 @@ export default function WebcamCapture({ onPhotoCaptured, value, guestType }: Web
     }
   }, [mode, selectedPreset]);
 
+  // Sync photo with value prop when value changes
+  useEffect(() => {
+    if (value !== undefined) {
+      setPhoto(value);
+    }
+  }, [value]);
+
   const startCamera = async () => {
     setCameraError('');
     setCameraActive(false);

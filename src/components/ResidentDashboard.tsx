@@ -802,8 +802,48 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
     stopHighFrequencyAlarm();
     try {
       const responderName = session.ownerName || `Owner of Flat ${wing}-${flatNo}`;
+      const targetVisitor = activePoll.find((v) => v.id === visitorId);
       const res = await api.respondToVisitor(visitorId, status, responderName, customReason || '');
       if (res.success) {
+        // Auto-register first-time helper if approved by resident
+        if (targetVisitor && status === 'approved') {
+          const type = targetVisitor.guestType;
+          if (['Maid', 'Milkman', 'Vehicle Cleaner', 'Newspaper'].includes(type)) {
+            const normalizedPhone = targetVisitor.mobileNumber.trim();
+            const qHelpers = query(
+              collection(db, 'daily_helpers'),
+              where('phone', '==', normalizedPhone)
+            );
+            const querySnap = await getDocs(qHelpers);
+            if (querySnap.empty) {
+              const helperRole = 
+                type === 'Maid' ? 'Maid' :
+                type === 'Milkman' ? 'Milkman' :
+                type === 'Vehicle Cleaner' ? 'Car Cleaner' :
+                type === 'Newspaper' ? 'Newspaper Guy' : 'Other';
+
+              await addDoc(collection(db, 'daily_helpers'), {
+                name: targetVisitor.fullName,
+                phone: normalizedPhone,
+                role: helperRole,
+                flats: [`${targetVisitor.wing}-${targetVisitor.flatNo}`],
+                photoUrl: targetVisitor.photoUrl || ''
+              });
+            } else {
+              // Add this flat if not already there
+              const helperDoc = querySnap.docs[0];
+              const helperData = helperDoc.data();
+              const currentFlats = helperData.flats || [];
+              const thisFlatId = `${targetVisitor.wing}-${targetVisitor.flatNo}`;
+              if (!currentFlats.includes(thisFlatId)) {
+                await updateDoc(doc(db, 'daily_helpers', helperDoc.id), {
+                  flats: [...currentFlats, thisFlatId]
+                });
+              }
+            }
+          }
+        }
+
         setActivePoll((prev) => prev.filter((v) => v.id !== visitorId));
         setRejectingId(null);
         setRejectReasonText('');
@@ -1170,6 +1210,7 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                 financials={financials}
                 loadingFinancials={loadingFinancials}
                 onRefreshComplaints={fetchComplaints}
+                announcements={announcements}
                 compTitle={compTitle}
                 setCompTitle={setCompTitle}
                 compDesc={compDesc}

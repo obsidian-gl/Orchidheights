@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FileText, ClipboardList, AlertCircle, Plus, Upload, X, Download, MessageSquare } from 'lucide-react';
+import { FileText, ClipboardList, AlertCircle, Plus, Upload, X, Download, MessageSquare, Megaphone, Bell, Calendar } from 'lucide-react';
 import { api } from '../../lib/api';
 
 interface HelpDeskSectionProps {
@@ -10,6 +10,7 @@ interface HelpDeskSectionProps {
   financials: any[];
   loadingFinancials: boolean;
   onRefreshComplaints: () => void;
+  announcements: any[];
 
   // Form states
   compTitle: string;
@@ -37,6 +38,7 @@ export default function HelpDeskSection({
   financials,
   loadingFinancials,
   onRefreshComplaints,
+  announcements,
   compTitle,
   setCompTitle,
   compDesc,
@@ -53,7 +55,7 @@ export default function HelpDeskSection({
   setCompError,
   handleFileChange
 }: HelpDeskSectionProps) {
-  const [activeSub, setActiveSub] = useState<'complaints' | 'financials'>('complaints');
+  const [activeSub, setActiveSub] = useState<'notices' | 'complaints' | 'financials'>('notices');
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [isDragging, setIsDragging] = useState<boolean>(false);
 
@@ -101,26 +103,108 @@ export default function HelpDeskSection({
     }
   };
 
+  // Filter announcements matching wing & flatNo target criteria
+  const filteredNotices = (announcements || []).filter(item => {
+    if (item.targetType === 'all') return true;
+    if (item.targetType === 'wing') {
+      return item.targetWing?.toLowerCase() === wing.toLowerCase();
+    }
+    if (item.targetType === 'flat') {
+      return item.targetWing?.toLowerCase() === wing.toLowerCase() && Number(item.targetFlat) === Number(flatNo);
+    }
+    return true;
+  });
+
   return (
     <div className="space-y-6 text-left">
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
         {/* Tab Selection */}
-        <div className="flex gap-2 bg-slate-50 p-1.5 rounded-xl mb-6">
+        <div className="flex flex-col sm:flex-row gap-2 bg-slate-50 p-1.5 rounded-xl mb-6">
+          <button
+            onClick={() => setActiveSub('notices')}
+            className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-2 cursor-pointer ${activeSub === 'notices' ? 'bg-white text-indigo-600 shadow-sm border border-slate-150' : 'text-slate-500 hover:bg-slate-100'}`}
+          >
+            <Megaphone className="w-4 h-4" />
+            <span>Society Notices</span>
+          </button>
           <button
             onClick={() => setActiveSub('complaints')}
             className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-2 cursor-pointer ${activeSub === 'complaints' ? 'bg-white text-indigo-600 shadow-sm border border-slate-150' : 'text-slate-500 hover:bg-slate-100'}`}
           >
             <MessageSquare className="w-4 h-4" />
-            <span>Complaints Helpdesk</span>
+            <span>Resolution Board (Tickets)</span>
           </button>
           <button
             onClick={() => setActiveSub('financials')}
             className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-2 cursor-pointer ${activeSub === 'financials' ? 'bg-white text-indigo-600 shadow-sm border border-slate-150' : 'text-slate-500 hover:bg-slate-100'}`}
           >
             <FileText className="w-4 h-4" />
-            <span>Financial Statements Ledger</span>
+            <span>Financial Ledger</span>
           </button>
         </div>
+
+        {/* --- SubTab: Society Notices --- */}
+        {activeSub === 'notices' && (
+          <div className="space-y-4">
+            <div className="flex items-center space-x-2 border-b border-slate-100 pb-2.5">
+              <Megaphone className="w-4 h-4 text-indigo-600" />
+              <h4 className="font-display font-bold text-xs uppercase tracking-wider text-slate-600">
+                Society Notice Board
+              </h4>
+            </div>
+
+            {filteredNotices.length === 0 ? (
+              <div className="py-12 flex flex-col items-center justify-center text-slate-400 border border-dashed rounded-xl bg-slate-50/20">
+                <Bell className="w-8 h-8 text-slate-200 mb-2" />
+                <p className="text-xs font-semibold">No active notices for Wing {wing} Flat {flatNo}.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {filteredNotices.map((notice) => (
+                  <div
+                    key={notice.id}
+                    className="bg-slate-50 border border-slate-200 rounded-2xl p-5 hover:border-slate-300 transition shadow-sm space-y-4"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-3">
+                      <div className="flex items-center space-x-2">
+                        <span className="p-1.5 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-lg shrink-0">
+                          🔔
+                        </span>
+                        <div>
+                          <h4 className="font-display font-black text-sm text-slate-800 uppercase tracking-tight">
+                            {notice.title}
+                          </h4>
+                          <p className="text-[9px] text-slate-400 font-mono flex items-center mt-0.5">
+                            <Calendar className="w-3.5 h-3.5 mr-1" /> Posted on {new Date(notice.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </p>
+                        </div>
+                      </div>
+
+                      <span className="text-[9px] font-mono font-bold bg-indigo-100 text-indigo-800 border border-indigo-150 px-2.5 py-0.5 rounded-full uppercase self-start sm:self-center">
+                        {notice.targetType === 'all' ? 'All Residents' : notice.targetType === 'wing' ? `Wing ${notice.targetWing} Only` : `Flat ${notice.targetWing}-${notice.targetFlat}`}
+                      </span>
+                    </div>
+
+                    <div className="text-xs text-slate-600 leading-relaxed text-left bg-white p-4 border border-slate-150 rounded-xl">
+                      <p className="whitespace-pre-line">{notice.content}</p>
+                    </div>
+
+                    {notice.mediaUrl && (
+                      <div className="border border-slate-150 rounded-xl overflow-hidden max-w-lg bg-slate-200">
+                        <img
+                          src={notice.mediaUrl}
+                          alt="Notice Attachment"
+                          className="w-full h-auto object-cover max-h-[300px]"
+                          referrerPolicy="no-referrer"
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* --- SubTab: Complaints --- */}
         {activeSub === 'complaints' && (
@@ -129,7 +213,7 @@ export default function HelpDeskSection({
             <div className="lg:col-span-5 bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-4 text-left">
               <div className="flex items-center space-x-1.5">
                 <AlertCircle className="w-4 h-4 text-red-500" />
-                <h4 className="font-display font-bold text-xs uppercase tracking-wider text-slate-800">File a Society Complaint</h4>
+                <h4 className="font-display font-bold text-xs uppercase tracking-wider text-slate-800">File a Society Ticket</h4>
               </div>
 
               {compError && <div className="bg-red-50 text-red-700 p-3 rounded-lg text-xs border border-red-100">{compError}</div>}
@@ -137,7 +221,7 @@ export default function HelpDeskSection({
 
               <form onSubmit={handleCreateComplaint} className="space-y-4 text-xs font-medium">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase">Complaint Title</label>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase">Ticket Title</label>
                   <input
                     type="text"
                     required
@@ -237,7 +321,7 @@ export default function HelpDeskSection({
             {/* Complaints Board */}
             <div className="lg:col-span-7 space-y-4">
               <h4 className="font-display font-bold text-xs uppercase tracking-wider text-slate-600 border-b border-slate-100 pb-2.5">
-                My Filed Complaints Board
+                Resolution Board
               </h4>
 
               {loadingComplaints ? (
@@ -245,7 +329,7 @@ export default function HelpDeskSection({
               ) : complaints.filter(c => c.wing === wing && c.flatNo === flatNo).length === 0 ? (
                 <div className="py-12 text-center text-slate-400 border border-dashed rounded-xl bg-slate-50/20">
                   <ClipboardList className="w-8 h-8 text-slate-200 mx-auto mb-2" />
-                  <p className="text-xs">You have not filed any complaints yet.</p>
+                  <p className="text-xs">You have not filed any tickets yet.</p>
                 </div>
               ) : (
                 <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1 text-xs">
