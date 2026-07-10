@@ -146,11 +146,13 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
 
   // Household Members State
   const [newMember, setNewMember] = useState<string>('');
+  const [newMemberPhone, setNewMemberPhone] = useState<string>('');
   
   // Vehicle State
   const [vType, setVType] = useState<'twowheeler' | 'fourwheeler'>('fourwheeler');
   const [vPlate, setVPlate] = useState<string>('');
   const [vModel, setVModel] = useState<string>('');
+  const [vParkingPlot, setVParkingPlot] = useState<string>('');
 
   // General settings
   const [altContact, setAltContact] = useState<string>('');
@@ -579,9 +581,13 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   const handleAddMember = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMember.trim() || !myOwnerData) return;
-    const updatedMembers = [...(myOwnerData.members || []), newMember.trim()];
+    const memberStr = newMemberPhone.trim()
+      ? `${newMember.trim()} (${newMemberPhone.trim()})`
+      : newMember.trim();
+    const updatedMembers = [...(myOwnerData.members || []), memberStr];
     updateOwnerProfile({ members: updatedMembers }, 'Household family member registered successfully.');
     setNewMember('');
+    setNewMemberPhone('');
   };
 
   const handleRemoveMember = (idx: number) => {
@@ -597,12 +603,14 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
       id: Math.random().toString(36).substring(2, 9),
       type: vType,
       plateNumber: vPlate.trim().toUpperCase(),
-      brandModel: vModel.trim()
+      brandModel: vModel.trim(),
+      parkingPlot: vParkingPlot.trim() || undefined
     };
     const updatedVehicles = [...(myOwnerData.vehicles || []), newV];
     updateOwnerProfile({ vehicles: updatedVehicles }, 'Vehicle register plate license registered successfully.');
     setVPlate('');
     setVModel('');
+    setVParkingPlot('');
   };
 
   const handleRemoveVehicle = (vehicleId: string) => {
@@ -1200,6 +1208,8 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
           settingsError={settingsError}
           newMember={newMember}
           setNewMember={setNewMember}
+          newMemberPhone={newMemberPhone}
+          setNewMemberPhone={setNewMemberPhone}
           handleAddMember={handleAddMember}
           handleRemoveMember={handleRemoveMember}
           vType={vType}
@@ -1208,6 +1218,8 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
           setVPlate={setVPlate}
           vModel={vModel}
           setVModel={setVModel}
+          vParkingPlot={vParkingPlot}
+          setVParkingPlot={setVParkingPlot}
           handleAddVehicle={handleAddVehicle}
           handleRemoveVehicle={handleRemoveVehicle}
           altContact={altContact}

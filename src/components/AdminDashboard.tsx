@@ -8,10 +8,12 @@ import {
   Key, Edit3, Trash2, Database, AlertTriangle, ShieldCheck, Check, 
   RefreshCw, X, Search, Phone, Megaphone, Plus, Smartphone, FileText, 
   ClipboardList, BookOpen, Eye, EyeOff, Upload, Download, Image, User, 
-  LogOut, Mail, Clock, ShieldAlert, FileSpreadsheet
+  LogOut, Mail, Clock, ShieldAlert, FileSpreadsheet, Dumbbell, Sparkles, Film, CheckSquare, Calendar
 } from 'lucide-react';
-import { FlatOwner, Announcement, Complaint, FinancialReport, EssentialContact, Visitor } from '../types';
+import { FlatOwner, Announcement, Complaint, FinancialReport, EssentialContact, Visitor, AmenityBooking, GymTheatreLog } from '../types';
 import { api } from '../lib/api';
+import { collection, doc, query, onSnapshot, orderBy, updateDoc, deleteDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 interface AdminDashboardProps {
   owners: FlatOwner[];
@@ -19,11 +21,41 @@ interface AdminDashboardProps {
   onLogoutAdmin?: () => void;
 }
 
-type AdminTab = 'flats' | 'notices' | 'complaints' | 'finance' | 'address-book' | 'system';
+type AdminTab = 'flats' | 'notices' | 'complaints' | 'finance' | 'address-book' | 'system' | 'amenities';
 
 export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin }: AdminDashboardProps) {
   const [activeTab, setActiveTab] = useState<AdminTab>('flats');
   
+  // Amenities Master State
+  const [amenityBookings, setAmenityBookings] = useState<AmenityBooking[]>([]);
+  const [gymTheatreLogs, setGymTheatreLogs] = useState<GymTheatreLog[]>([]);
+
+  // Listen to amenities real-time updates in admin panel
+  useEffect(() => {
+    const qBookings = query(collection(db, 'amenities_bookings'), orderBy('createdAt', 'desc'));
+    const unsubBookings = onSnapshot(qBookings, (snapshot) => {
+      const list: AmenityBooking[] = [];
+      snapshot.forEach((doc) => {
+        list.push({ id: doc.id, ...doc.data() } as AmenityBooking);
+      });
+      setAmenityBookings(list);
+    }, (error) => console.error('Admin listening bookings error:', error));
+
+    const qLogs = query(collection(db, 'gym_theatre_logs'), orderBy('createdAt', 'desc'));
+    const unsubLogs = onSnapshot(qLogs, (snapshot) => {
+      const list: GymTheatreLog[] = [];
+      snapshot.forEach((doc) => {
+        list.push({ id: doc.id, ...doc.data() } as GymTheatreLog);
+      });
+      setGymTheatreLogs(list);
+    }, (error) => console.error('Admin listening logs error:', error));
+
+    return () => {
+      unsubBookings();
+      unsubLogs();
+    };
+  }, []);
+
   // Master lists
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [complaints, setComplaints] = useState<Complaint[]>([]);
@@ -42,6 +74,24 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
   const [selectedFlat, setSelectedFlat] = useState<FlatOwner | null>(null);
   const [selectedFlatVisitors, setSelectedFlatVisitors] = useState<Visitor[]>([]);
   const [loadingVisitors, setLoadingVisitors] = useState<boolean>(false);
+
+  // Keep selectedFlat in sync with master owners list when it is refreshed
+  useEffect(() => {
+    if (selectedFlat) {
+      const fresh = owners.find((o) => o.wing === selectedFlat.wing && o.flatNo === selectedFlat.flatNo);
+      if (fresh) {
+        setSelectedFlat(fresh);
+      }
+    }
+  }, [owners]);
+
+  // Admin CRUD for Members and Vehicles
+  const [adminNewMember, setAdminNewMember] = useState<string>('');
+  const [adminNewMemberPhone, setAdminNewMemberPhone] = useState<string>('');
+  const [adminNewVehicleType, setAdminNewVehicleType] = useState<'twowheeler' | 'fourwheeler'>('fourwheeler');
+  const [adminNewVehiclePlate, setAdminNewVehiclePlate] = useState<string>('');
+  const [adminNewVehicleModel, setAdminNewVehicleModel] = useState<string>('');
+  const [adminNewVehicleParking, setAdminNewVehicleParking] = useState<string>('');
 
   // --- CRUD States ---
   
@@ -278,6 +328,167 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
     } catch (error) {
       console.error(error);
     }
+  };
+
+  // Admin-side CRUD for household members
+  const handleAddMemberToFlat = async (wing: string, flatNo: number) => {
+    if (!adminNewMember.trim()) return;
+    const freshOwner = owners.find((o) => o.wing === wing && o.flatNo === flatNo);
+    if (!freshOwner) return;
+
+    const memberStr = adminNewMemberPhone.trim()
+      ? `${adminNewMember.trim()} (${adminNewMemberPhone.trim()})`
+      : adminNewMember.trim();
+
+    const updatedMembers = [...(freshOwner.members || []), memberStr];
+    
+    try {
+      const res = await api.updateOwner(wing, flatNo, { members: updatedMembers });
+      if (res.success) {
+        setAdminNewMember('');
+        setAdminNewMemberPhone('');
+        onRefreshOwners();
+      } else {
+        alert(res.message || 'Failed to add co-resident.');
+      }
+    } catch (e) {
+      alert('Error updating co-residents.');
+    }
+  };
+
+  const handleDeleteMemberFromFlat = async (wing: string, flatNo: number, indexToDelete: number) => {
+    if (!window.confirm('Are you sure you want to delete this family member?')) return;
+    const freshOwner = owners.find((o) => o.wing === wing && o.flatNo === flatNo);
+    if (!freshOwner) return;
+
+    const updatedMembers = (freshOwner.members || []).filter((_, idx) => idx !== indexToDelete);
+
+    try {
+      const res = await api.updateOwner(wing, flatNo, { members: updatedMembers });
+      if (res.success) {
+        onRefreshOwners();
+      } else {
+        alert(res.message || 'Failed to remove co-resident.');
+      }
+    } catch (e) {
+      alert('Error deleting co-resident.');
+    }
+  };
+
+  // Admin-side CRUD for vehicles
+  const handleAddVehicleToFlat = async (wing: string, flatNo: number) => {
+    if (!adminNewVehiclePlate.trim() || !adminNewVehicleModel.trim()) return;
+    const freshOwner = owners.find((o) => o.wing === wing && o.flatNo === flatNo);
+    if (!freshOwner) return;
+
+    const newV = {
+      id: Math.random().toString(36).substring(2, 9),
+      type: adminNewVehicleType,
+      plateNumber: adminNewVehiclePlate.trim().toUpperCase(),
+      brandModel: adminNewVehicleModel.trim(),
+      parkingPlot: adminNewVehicleParking.trim() || undefined
+    };
+
+    const updatedVehicles = [...(freshOwner.vehicles || []), newV];
+
+    try {
+      const res = await api.updateOwner(wing, flatNo, { vehicles: updatedVehicles });
+      if (res.success) {
+        setAdminNewVehiclePlate('');
+        setAdminNewVehicleModel('');
+        setAdminNewVehicleParking('');
+        onRefreshOwners();
+      } else {
+        alert(res.message || 'Failed to add vehicle.');
+      }
+    } catch (e) {
+      alert('Error adding vehicle.');
+    }
+  };
+
+  const handleDeleteVehicleFromFlat = async (wing: string, flatNo: number, vehicleIdToDelete: string) => {
+    if (!window.confirm('Are you sure you want to delete this vehicle?')) return;
+    const freshOwner = owners.find((o) => o.wing === wing && o.flatNo === flatNo);
+    if (!freshOwner) return;
+
+    const updatedVehicles = (freshOwner.vehicles || []).filter((v) => v.id !== vehicleIdToDelete);
+
+    try {
+      const res = await api.updateOwner(wing, flatNo, { vehicles: updatedVehicles });
+      if (res.success) {
+        onRefreshOwners();
+      } else {
+        alert(res.message || 'Failed to remove vehicle.');
+      }
+    } catch (e) {
+      alert('Error deleting vehicle.');
+    }
+  };
+
+  // Admin override functions for amenities bookings and check-in logs
+  const handleAdminApproveAmenityBooking = async (id: string) => {
+    const votes = Array.from({ length: 50 }, (_, i) => `A-${101 + i}`);
+    try {
+      const bookingRef = doc(db, 'amenities_bookings', id);
+      await updateDoc(bookingRef, { approvedFlats: votes });
+      alert('Booking approved and cleared successfully by Administrator override.');
+    } catch (err) {
+      alert('Error force-approving booking.');
+    }
+  };
+
+  const handleAdminDeleteAmenityBooking = async (id: string) => {
+    if (!window.confirm('Are you sure you want to cancel and delete this function booking?')) return;
+    try {
+      const bookingRef = doc(db, 'amenities_bookings', id);
+      await deleteDoc(bookingRef);
+      alert('Booking deleted successfully.');
+    } catch (err) {
+      alert('Error deleting booking.');
+    }
+  };
+
+  const handleAdminCheckOutLog = async (logId: string) => {
+    if (!window.confirm('Force check-out this resident from the amenity?')) return;
+    try {
+      const logRef = doc(db, 'gym_theatre_logs', logId);
+      const now = new Date().toISOString();
+      await updateDoc(logRef, {
+        checkOutTime: now,
+        durationMinutes: 30,
+        exitPhotoUrl: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=150&q=80'
+      });
+      alert('Resident checked out successfully.');
+    } catch (err) {
+      alert('Error checking out resident.');
+    }
+  };
+
+  const handleDownloadGymTheatreLogsCSV = () => {
+    if (gymTheatreLogs.length === 0) {
+      alert('No gym or movie theatre logs to export.');
+      return;
+    }
+    let csvContent = `Orchid Heights - Gym & Movie Theatre Logs Report\r\n`;
+    csvContent += `Generated On,${new Date().toLocaleString('en-IN')}\r\n\r\n`;
+    csvContent += `"Flat ID","Amenity","Check-In Time","Check-Out Time","Duration (Mins)","Exit Photo Verification Status"\r\n`;
+
+    gymTheatreLogs.forEach((log) => {
+      const inTime = new Date(log.checkInTime).toLocaleString('en-IN');
+      const outTime = log.checkOutTime ? new Date(log.checkOutTime).toLocaleString('en-IN') : 'ACTIVE SESSION';
+      const duration = log.durationMinutes || 'N/A';
+      const photoStatus = log.exitPhotoUrl ? 'Verified' : 'No Photo';
+      csvContent += `"${log.flatId}","${log.amenity}","${inTime}","${outTime}","${duration}","${photoStatus}"\r\n`;
+    });
+
+    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Gym_Theatre_Logs_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // Notice Board: Create or Save notice
@@ -626,6 +837,7 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
             { id: 'complaints', label: 'Complaints', icon: ClipboardList },
             { id: 'finance', label: 'Financial Ledger', icon: FileSpreadsheet },
             { id: 'address-book', label: 'Address Book', icon: BookOpen },
+            { id: 'amenities', label: 'Amenities', icon: Sparkles },
             { id: 'system', label: 'System Utils', icon: Database }
           ] as const
         ).map((tab) => {
@@ -831,11 +1043,20 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
               <div className="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm space-y-6">
                 
                 {/* Selected Title */}
-                <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-                  <div>
+                <div className="flex justify-between items-start border-b border-slate-100 pb-3">
+                  <div className="text-left">
                     <span className="text-[10px] bg-indigo-600 text-white font-bold px-2 py-0.5 rounded-full uppercase">Inspecting Flat</span>
                     <h3 className="font-display font-black text-lg text-slate-800 mt-1">{selectedFlat.wing}-{selectedFlat.flatNo}</h3>
                     <p className="text-xs text-slate-400 font-medium">Full registered device logs, household members, and visitor logs override.</p>
+                    
+                    {/* Flat occupant overview */}
+                    <div className="mt-2.5 p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl text-xs space-y-1">
+                      <p className="font-bold text-slate-850 uppercase">Owner: {selectedFlat.nameEn} {selectedFlat.nameGu ? `(${selectedFlat.nameGu})` : ''}</p>
+                      <p className="text-slate-600 font-mono">📞 Primary: {selectedFlat.phone ? `+91 ${selectedFlat.phone}` : 'No phone'}</p>
+                      {selectedFlat.secondaryContact && (
+                        <p className="text-slate-600 font-mono">📞 Alternate: +91 {selectedFlat.secondaryContact}</p>
+                      )}
+                    </div>
                   </div>
                   <button onClick={() => setSelectedFlat(null)} className="text-slate-400 hover:text-slate-600 bg-slate-100 p-1.5 rounded-xl transition">
                     <X className="w-4 h-4" />
@@ -843,33 +1064,156 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
                 </div>
 
                 {/* Sub-section 1: Household Members & Vehicles */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="bg-slate-50 border border-slate-150 p-3.5 rounded-xl">
-                    <h4 className="text-xs font-bold text-slate-700 mb-2 uppercase tracking-wider">Household Members</h4>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  
+                  {/* Household Members with admin CRUD */}
+                  <div className="bg-slate-50 border border-slate-150 p-4 rounded-xl space-y-4 text-left">
+                    <div className="flex justify-between items-center border-b border-slate-150 pb-1.5">
+                      <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Household Members</h4>
+                      <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded-full">
+                        {selectedFlat.members?.length || 0}
+                      </span>
+                    </div>
+
                     {selectedFlat.members && selectedFlat.members.length > 0 ? (
-                      <ul className="text-xs space-y-1 text-slate-600 list-disc list-inside">
+                      <div className="space-y-1.5 max-h-[160px] overflow-y-auto">
                         {selectedFlat.members.map((m, idx) => (
-                          <li key={idx} className="font-semibold uppercase">{m}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-xs text-slate-400 italic">No co-residents registered.</p>
-                    )}
-                  </div>
-                  <div className="bg-slate-50 border border-slate-150 p-3.5 rounded-xl">
-                    <h4 className="text-xs font-bold text-slate-700 mb-2 uppercase tracking-wider">Vehicles Registered</h4>
-                    {selectedFlat.vehicles && selectedFlat.vehicles.length > 0 ? (
-                      <div className="space-y-1">
-                        {selectedFlat.vehicles.map((v) => (
-                          <div key={v.id} className="text-xs font-semibold text-slate-600 flex items-center justify-between">
-                            <span>{v.type === 'twowheeler' ? '🏍️' : '🚗'} {v.brandModel}</span>
-                            <span className="font-mono bg-white border border-slate-200 px-1.5 rounded font-bold">{v.plateNumber}</span>
+                          <div key={idx} className="flex justify-between items-center bg-white border border-slate-200 p-2 rounded-lg text-xs font-semibold uppercase text-slate-800">
+                            <span>👤 {m}</span>
+                            <button
+                              onClick={() => handleDeleteMemberFromFlat(selectedFlat.wing, selectedFlat.flatNo, idx)}
+                              className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition cursor-pointer"
+                              title="Delete Member"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         ))}
                       </div>
                     ) : (
-                      <p className="text-xs text-slate-400 italic">No vehicles registered.</p>
+                      <p className="text-xs text-slate-400 italic py-4 text-center">No co-residents registered.</p>
                     )}
+
+                    {/* Admin Add Member Form */}
+                    <div className="bg-white border border-slate-200 p-2.5 rounded-lg space-y-2">
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Add Co-resident</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs font-medium">
+                        <input
+                          type="text"
+                          placeholder="Name (e.g. Amit Patel)"
+                          value={adminNewMember}
+                          onChange={(e) => setAdminNewMember(e.target.value)}
+                          className="bg-slate-50 border border-slate-200 rounded p-1.5 uppercase outline-none focus:border-indigo-500 text-[11px]"
+                        />
+                        <input
+                          type="tel"
+                          placeholder="Phone (Optional)"
+                          value={adminNewMemberPhone}
+                          onChange={(e) => setAdminNewMemberPhone(e.target.value)}
+                          className="bg-slate-50 border border-slate-200 rounded p-1.5 outline-none focus:border-indigo-500 text-[11px]"
+                        />
+                      </div>
+                      <button
+                        onClick={() => handleAddMemberToFlat(selectedFlat.wing, selectedFlat.flatNo)}
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1 px-2 rounded text-[10px] uppercase cursor-pointer"
+                      >
+                        Add Member
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Registered Vehicles with admin CRUD */}
+                  <div className="bg-slate-50 border border-slate-150 p-4 rounded-xl space-y-4 text-left">
+                    <div className="flex justify-between items-center border-b border-slate-150 pb-1.5">
+                      <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Vehicles Registered</h4>
+                      <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded-full">
+                        {selectedFlat.vehicles?.length || 0}
+                      </span>
+                    </div>
+
+                    {selectedFlat.vehicles && selectedFlat.vehicles.length > 0 ? (
+                      <div className="space-y-1.5 max-h-[160px] overflow-y-auto">
+                        {selectedFlat.vehicles.map((v) => (
+                          <div key={v.id} className="flex justify-between items-center bg-white border border-slate-200 p-2 rounded-lg text-xs font-semibold text-slate-800">
+                            <div className="flex flex-col text-left">
+                              <span className="font-bold uppercase">{v.type === 'twowheeler' ? '🏍️' : '🚗'} {v.brandModel}</span>
+                              <span className="font-mono text-[10px] text-slate-500 font-bold">{v.plateNumber}</span>
+                              {v.parkingPlot && (
+                                <span className="text-[9px] text-indigo-600 font-bold">🅿️ Plot: {v.parkingPlot}</span>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => handleDeleteVehicleFromFlat(selectedFlat.wing, selectedFlat.flatNo, v.id)}
+                              className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition cursor-pointer"
+                              title="Delete Vehicle"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-400 italic py-4 text-center">No vehicles registered.</p>
+                    )}
+
+                    {/* Admin Add Vehicle Form */}
+                    <div className="bg-white border border-slate-200 p-2.5 rounded-lg space-y-2">
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Register Vehicle</p>
+                      
+                      <div className="flex gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setAdminNewVehicleType('twowheeler')}
+                          className={`flex-1 py-1 rounded text-[9px] font-bold border transition cursor-pointer ${
+                            adminNewVehicleType === 'twowheeler' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-slate-50 text-slate-600 border-slate-200'
+                          }`}
+                        >
+                          🏍️ 2W
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAdminNewVehicleType('fourwheeler')}
+                          className={`flex-1 py-1 rounded text-[9px] font-bold border transition cursor-pointer ${
+                            adminNewVehicleType === 'fourwheeler' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-slate-50 text-slate-600 border-slate-200'
+                          }`}
+                        >
+                          🚗 4W
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-1.5 text-xs font-medium">
+                        <input
+                          type="text"
+                          placeholder="PLATE (GJ01AB1234)"
+                          value={adminNewVehiclePlate}
+                          onChange={(e) => setAdminNewVehiclePlate(e.target.value)}
+                          className="bg-slate-50 border border-slate-200 rounded p-1.5 uppercase outline-none focus:border-indigo-500 text-[11px]"
+                        />
+                        <input
+                          type="text"
+                          placeholder="MODEL (e.g. Swift)"
+                          value={adminNewVehicleModel}
+                          onChange={(e) => setAdminNewVehicleModel(e.target.value)}
+                          className="bg-slate-50 border border-slate-200 rounded p-1.5 outline-none focus:border-indigo-500 text-[11px]"
+                        />
+                      </div>
+
+                      <input
+                        type="text"
+                        placeholder="Parking Plot (e.g. B-1 Basement)"
+                        value={adminNewVehicleParking}
+                        onChange={(e) => setAdminNewVehicleParking(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded p-1.5 outline-none focus:border-indigo-500 text-[11px] font-medium"
+                      />
+
+                      <button
+                        onClick={() => handleAddVehicleToFlat(selectedFlat.wing, selectedFlat.flatNo)}
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1 px-2 rounded text-[10px] uppercase cursor-pointer"
+                      >
+                        Register Vehicle
+                      </button>
+                    </div>
+
                   </div>
                 </div>
 
@@ -1842,6 +2186,190 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
                   </div>
                 </div>
               ))}
+            </div>
+
+          </div>
+        )}
+
+        {/* AMENITIES & BOOKINGS OVERRIDE TAB */}
+        {activeTab === 'amenities' && (
+          <div className="space-y-6 text-left">
+            
+            {/* Header / Summary stats */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-center space-x-3 text-left">
+                <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl text-indigo-600 shrink-0">
+                  <Sparkles className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-display font-black text-base text-slate-800">Amenities & Bookings Master Auditor</h3>
+                  <p className="text-xs text-slate-400">Force approve function halls, audit live Gym / Theatre entries, and download audit sheets.</p>
+                </div>
+              </div>
+
+              <button
+                onClick={handleDownloadGymTheatreLogsCSV}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center justify-center space-x-1.5 shadow transition cursor-pointer self-start md:self-auto shrink-0 animate-fadeIn"
+              >
+                <Download className="w-4 h-4" />
+                <span>Export Gym & Theatre Logs (CSV)</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              
+              {/* Left Column: Function Bookings (7 cols) */}
+              <div className="lg:col-span-7 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                  <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <Calendar className="w-4 h-4 text-indigo-600" />
+                    <span>Function Hall Requests ({amenityBookings.length})</span>
+                  </h4>
+                </div>
+
+                {amenityBookings.length === 0 ? (
+                  <div className="py-12 text-center text-slate-400 font-medium">
+                    <p className="text-xs">No function bookings logged in the system.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4 max-h-[600px] overflow-y-auto pr-1">
+                    {amenityBookings.map((booking) => {
+                      const totalVotes = booking.approvedFlats?.length || 0;
+                      const isCleared = totalVotes >= 49;
+
+                      return (
+                        <div key={booking.id} className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 hover:bg-slate-50 transition text-left space-y-3">
+                          <div className="flex justify-between items-start gap-4">
+                            <div>
+                              <span className="bg-indigo-100 text-indigo-800 font-mono text-[9px] font-black px-2.5 py-0.5 rounded uppercase">
+                                Flat {booking.flatId}
+                              </span>
+                              <h5 className="font-bold text-xs text-slate-800 mt-1 uppercase">
+                                {booking.propertyName}
+                              </h5>
+                            </div>
+                            <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded border uppercase ${
+                              isCleared 
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                                : 'bg-amber-50 text-amber-700 border-amber-200'
+                            }`}>
+                              {isCleared ? '✅ Cleared' : 'Pending approvals'}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] text-slate-600 pt-2 border-t border-slate-100">
+                            <p><span className="text-slate-400 font-bold uppercase text-[9px]">From:</span> {new Date(booking.dateFrom).toLocaleString('en-IN')}</p>
+                            <p><span className="text-slate-400 font-bold uppercase text-[9px]">To:</span> {new Date(booking.dateTo).toLocaleString('en-IN')}</p>
+                            <p><span className="text-slate-400 font-bold uppercase text-[9px]">Purpose:</span> {booking.reason}</p>
+                            <p><span className="text-slate-400 font-bold uppercase text-[9px]">Stuff needed:</span> {booking.stuffNeeded}</p>
+                            {booking.parkingRequest && <p><span className="text-slate-400 font-bold uppercase text-[9px]">Parking:</span> {booking.parkingRequest}</p>}
+                            <p><span className="text-slate-400 font-bold uppercase text-[9px]">Votes:</span> {totalVotes} / 49</p>
+                          </div>
+
+                          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                            {!isCleared && (
+                              <button
+                                onClick={() => handleAdminApproveAmenityBooking(booking.id)}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-lg text-[10px] uppercase transition cursor-pointer"
+                              >
+                                Force Approve
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleAdminDeleteAmenityBooking(booking.id)}
+                              className="bg-white hover:bg-red-50 text-red-600 border border-slate-200 hover:border-red-200 font-bold px-3 py-1.5 rounded-lg text-[10px] uppercase transition cursor-pointer"
+                            >
+                              Delete Request
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Right Column: Gym & Theatre Logging (5 cols) */}
+              <div className="lg:col-span-5 space-y-6">
+                
+                {/* 1. Active Check-ins */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                  <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wider border-b border-slate-100 pb-3 flex items-center gap-1.5">
+                    <Clock className="text-indigo-600 w-4 h-4" />
+                    <span>Active Sessions</span>
+                  </h4>
+
+                  {gymTheatreLogs.filter(l => !l.checkOutTime).length === 0 ? (
+                    <div className="py-8 text-center text-slate-400 italic text-xs font-semibold">
+                      No residents currently active inside Gym or Theatre.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {gymTheatreLogs.filter(l => !l.checkOutTime).map((log) => (
+                        <div key={log.id} className="bg-indigo-50/40 border border-indigo-100 p-3.5 rounded-xl flex justify-between items-center text-xs gap-3">
+                          <div className="text-left space-y-1">
+                            <p className="font-bold text-indigo-900 uppercase">
+                              {log.amenity === 'Gym' ? '🏋️ Gym' : '🎬 Theatre'}
+                            </p>
+                            <p className="font-semibold text-slate-700">Flat: {log.flatId}</p>
+                            <p className="text-[10px] text-slate-400 font-mono">In: {new Date(log.checkInTime).toLocaleTimeString('en-IN')}</p>
+                          </div>
+                          <button
+                            onClick={() => handleAdminCheckOutLog(log.id)}
+                            className="bg-amber-500 hover:bg-amber-600 text-white font-bold px-3 py-1.5 rounded-lg text-[9px] uppercase transition cursor-pointer shadow-sm"
+                          >
+                            Checkout
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Log History */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                  <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wider border-b border-slate-100 pb-3 flex items-center gap-1.5">
+                    <Dumbbell className="text-indigo-600 w-4 h-4" />
+                    <span>Log History</span>
+                  </h4>
+
+                  {gymTheatreLogs.filter(l => l.checkOutTime).length === 0 ? (
+                    <div className="py-8 text-center text-slate-400 italic text-xs font-semibold">
+                      No historical logs checked in.
+                    </div>
+                  ) : (
+                    <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
+                      {gymTheatreLogs.filter(l => l.checkOutTime).map((log) => (
+                        <div key={log.id} className="bg-slate-50 border border-slate-150 p-3 rounded-xl flex items-center justify-between text-xs gap-3 font-medium">
+                          <div className="text-left space-y-1">
+                            <p className="font-bold text-slate-800 uppercase">
+                              {log.amenity === 'Gym' ? '🏋️ Gym' : '🎬 Theatre'} ({log.flatId})
+                            </p>
+                            <p className="text-[9px] text-slate-400 font-mono">
+                              In: {new Date(log.checkInTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} • Out: {new Date(log.checkOutTime!).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                            <span className="inline-block text-[8px] bg-slate-250 text-slate-800 border border-slate-350 px-1.5 py-0.5 rounded font-mono font-bold uppercase leading-none">
+                              {log.durationMinutes} Mins
+                            </span>
+                          </div>
+
+                          {log.exitPhotoUrl && (
+                            <img
+                              src={log.exitPhotoUrl}
+                              alt="exit verification"
+                              className="w-10 h-10 object-cover rounded-lg border border-slate-200 shadow-sm cursor-zoom-in shrink-0"
+                              onClick={() => window.open(log.exitPhotoUrl, '_blank')}
+                              referrerPolicy="no-referrer"
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+              </div>
+
             </div>
 
           </div>

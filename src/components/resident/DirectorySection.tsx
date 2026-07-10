@@ -118,13 +118,15 @@ export default function DirectorySection({
 
                   {/* Family members */}
                   {owner.members && owner.members.length > 0 && (
-                    <div className="text-[10px] text-slate-500 bg-white border border-slate-200/50 p-2 rounded-lg">
-                      <p className="font-bold text-[8px] text-slate-400 uppercase tracking-widest mb-1">
+                    <div className="text-[10px] text-slate-500 bg-white border border-slate-200/50 p-2.5 rounded-lg">
+                      <p className="font-bold text-[8px] text-slate-400 uppercase tracking-widest">
                         Household Members:
                       </p>
-                      <p className="font-semibold text-slate-700 uppercase">
-                        {owner.members.join(', ')}
-                      </p>
+                      <ul className="list-disc list-inside mt-1 font-semibold text-slate-700 uppercase space-y-0.5">
+                        {owner.members.map((member, idx) => (
+                          <li key={idx}>{member}</li>
+                        ))}
+                      </ul>
                     </div>
                   )}
 
@@ -138,10 +140,15 @@ export default function DirectorySection({
                         {owner.vehicles.map((v) => (
                           <span
                             key={v.id}
-                            className="inline-flex items-center bg-indigo-50/50 border border-indigo-100/50 text-indigo-800 px-2 py-0.5 rounded font-mono text-[9px] font-bold"
+                            className="inline-flex flex-col bg-indigo-50/50 border border-indigo-100/50 text-indigo-800 px-2 py-1 rounded font-mono text-[9px] font-bold text-left"
                           >
-                            <span className="mr-1">{v.type === 'fourwheeler' ? '🚗' : '🏍️'}</span>
-                            <span>{v.plateNumber} ({v.brandModel})</span>
+                            <span className="flex items-center">
+                              <span className="mr-1">{v.type === 'fourwheeler' ? '🚗' : '🏍️'}</span>
+                              <span>{v.plateNumber} ({v.brandModel})</span>
+                            </span>
+                            {v.parkingPlot && (
+                              <span className="text-[8px] text-indigo-600 mt-0.5">🅿️ Plot: {v.parkingPlot}</span>
+                            )}
                           </span>
                         ))}
                       </div>

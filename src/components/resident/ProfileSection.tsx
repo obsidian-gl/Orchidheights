@@ -13,6 +13,8 @@ interface ProfileSectionProps {
   // Family members state
   newMember: string;
   setNewMember: (text: string) => void;
+  newMemberPhone: string;
+  setNewMemberPhone: (text: string) => void;
   handleAddMember: (e: React.FormEvent) => void;
   handleRemoveMember: (idx: number) => void;
 
@@ -23,6 +25,8 @@ interface ProfileSectionProps {
   setVPlate: (text: string) => void;
   vModel: string;
   setVModel: (text: string) => void;
+  vParkingPlot: string;
+  setVParkingPlot: (text: string) => void;
   handleAddVehicle: (e: React.FormEvent) => void;
   handleRemoveVehicle: (id: string) => void;
 
@@ -63,6 +67,8 @@ export default function ProfileSection({
   settingsError,
   newMember,
   setNewMember,
+  newMemberPhone,
+  setNewMemberPhone,
   handleAddMember,
   handleRemoveMember,
   vType,
@@ -71,6 +77,8 @@ export default function ProfileSection({
   setVPlate,
   vModel,
   setVModel,
+  vParkingPlot,
+  setVParkingPlot,
   handleAddVehicle,
   handleRemoveVehicle,
   altContact,
@@ -158,7 +166,7 @@ export default function ProfileSection({
             </div>
 
             <p className="text-[11px] text-slate-400">
-              Register family members (Max 2) residing in this apartment for emergency gatekeeper verification and safety.
+              Register family members residing in this apartment for emergency gatekeeper verification, notifications and security audits.
             </p>
 
             {myOwnerData?.members && myOwnerData.members.length > 0 ? (
@@ -187,26 +195,33 @@ export default function ProfileSection({
             )}
 
             {/* Form to add family member */}
-            {(!myOwnerData?.members || myOwnerData.members.length < 2) && (
-              <form onSubmit={handleAddMember} className="flex gap-2 text-xs">
+            <form onSubmit={handleAddMember} className="space-y-2 text-xs">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Rahul popat"
+                  placeholder="Full Name (e.g. Rahul Popat)"
                   value={newMember}
                   onChange={(e) => setNewMember(e.target.value)}
                   className="flex-1 bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-lg px-3 py-2 text-xs font-medium outline-none transition"
                 />
-                <button
-                  type="submit"
-                  disabled={savingSettings}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 rounded-lg flex items-center space-x-1 transition cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Add</span>
-                </button>
-              </form>
-            )}
+                <input
+                  type="tel"
+                  placeholder="Contact No. (Optional)"
+                  value={newMemberPhone}
+                  onChange={(e) => setNewMemberPhone(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-lg px-3 py-2 text-xs font-medium outline-none transition w-full sm:w-40"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={savingSettings}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg flex items-center justify-center space-x-1.5 transition cursor-pointer text-xs"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Household Member</span>
+              </button>
+            </form>
           </div>
 
           {/* Box 2: Registered Vehicles */}
@@ -229,10 +244,15 @@ export default function ProfileSection({
                     key={v.id}
                     className="flex justify-between items-center bg-slate-50 border border-slate-200 p-2.5 rounded-lg text-xs"
                   >
-                    <div className="flex items-center space-x-2 font-mono font-bold text-slate-800">
-                      <span>{v.type === 'fourwheeler' ? '🚗' : '🏍️'}</span>
-                      <span>{v.plateNumber}</span>
-                      <span className="text-[10px] text-slate-400 font-normal">({v.brandModel})</span>
+                    <div className="flex flex-col font-mono font-bold text-slate-800 text-left">
+                      <div className="flex items-center space-x-2">
+                        <span>{v.type === 'fourwheeler' ? '🚗' : '🏍️'}</span>
+                        <span>{v.plateNumber}</span>
+                        <span className="text-[10px] text-slate-400 font-normal">({v.brandModel})</span>
+                      </div>
+                      {v.parkingPlot && (
+                        <span className="text-[10px] text-indigo-600 font-bold mt-0.5">🅿️ Plot: {v.parkingPlot}</span>
+                      )}
                     </div>
                     <button
                       onClick={() => handleRemoveVehicle(v.id)}
@@ -252,7 +272,7 @@ export default function ProfileSection({
             )}
 
             {/* Form to add vehicle */}
-            <form onSubmit={handleAddVehicle} className="space-y-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <form onSubmit={handleAddVehicle} className="space-y-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-left">
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -290,6 +310,16 @@ export default function ProfileSection({
                   value={vModel}
                   onChange={(e) => setVModel(e.target.value)}
                   className="bg-white border border-slate-200 rounded-lg px-2.5 py-2 outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="text-xs">
+                <input
+                  type="text"
+                  placeholder="Parking Plot (e.g. B-1 (Basement), G-1 (Ground))"
+                  value={vParkingPlot}
+                  onChange={(e) => setVParkingPlot(e.target.value)}
+                  className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-2 outline-none focus:border-indigo-500"
                 />
               </div>
 

@@ -8,6 +8,7 @@ export interface Vehicle {
   type: 'twowheeler' | 'fourwheeler';
   plateNumber: string;
   brandModel: string;
+  parkingPlot?: string;
 }
 
 export interface DeviceInfo {
