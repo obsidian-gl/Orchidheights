@@ -112,7 +112,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       } else if ((data as any).code === 'DEVICE_LIMIT_EXCEEDED') {
         setIsDeviceBlocked(true);
         setBlockedDevices((data as any).devices || []);
-        setError('2 devices are already signed in for this flat — log out from one first.');
+        setError('4 devices are already signed in for this flat — log out from one first.');
       } else {
         setError(data.message || 'Login failed. Please check credentials.');
       }
@@ -203,11 +203,11 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           <div className="space-y-4 bg-slate-50 border border-slate-200 p-4 md:p-5 rounded-2xl text-left">
             <div className="flex items-center space-x-2 text-amber-600">
               <AlertCircle className="w-5 h-5 shrink-0" />
-              <span className="text-xs font-bold uppercase tracking-wider">Device limit exceeded ({blockedDevices.length}/2 active)</span>
+              <span className="text-xs font-bold uppercase tracking-wider">Device limit exceeded ({blockedDevices.length}/4 active)</span>
             </div>
             
             <p className="text-[11px] text-slate-500 leading-relaxed">
-              Orchid Heights security limits logins to <strong>max 2 active devices</strong> per flat. To log in with this new device, you must log out one of your other devices remotely:
+              Orchid Heights security limits logins to <strong>max 4 active devices</strong> per flat. To log in with this new device, you must log out one of your other devices remotely:
             </p>
 
             <div className="space-y-3">

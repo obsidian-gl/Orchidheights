@@ -112,3 +112,46 @@ export interface EssentialContact {
   alternatePhone?: string;
   active: boolean;
 }
+
+export interface AmenityBooking {
+  id: string;
+  flatId: string;
+  propertyName: string;
+  dateFrom: string;
+  dateTo: string;
+  reason: string;
+  stuffNeeded: string;
+  parkingRequest: string;
+  approvedFlats: string[];
+  createdAt: string;
+}
+
+export interface GymTheatreLog {
+  id: string;
+  flatId: string;
+  amenity: 'Gym' | 'Theatre';
+  checkInTime: string;
+  checkOutTime?: string;
+  exitPhotoUrl?: string;
+  durationMinutes?: number;
+  createdAt: string;
+}
+
+export interface DailyHelper {
+  id: string;
+  name: string;
+  phone: string;
+  role: 'Maid' | 'Milkman' | 'Car Cleaner' | 'Newspaper Guy' | 'Other';
+  flats: string[];
+}
+
+export interface AbsenceLog {
+  id: string;
+  flatId: string;
+  dateFrom: string;
+  dateTo: string;
+  milkRedirectFlat?: string;
+  newspaperRedirectFlat?: string;
+  parcelRedirectFlat?: string;
+  createdAt: string;
+}

@@ -146,12 +146,12 @@ export async function verifyCredentials(role: string, payload: any): Promise<{ s
         const device = payload.device;
         if (device && device.deviceId) {
           const isRegistered = currentDevices.some((d) => d.deviceId === device.deviceId);
-          if (!isRegistered && currentDevices.length >= 2) {
+          if (!isRegistered && currentDevices.length >= 4) {
             return {
               success: false,
               code: 'DEVICE_LIMIT_EXCEEDED',
               devices: currentDevices,
-              message: '2 devices are already signed in for this flat — log out from one first.'
+              message: '4 devices are already signed in for this flat — log out from one first.'
             } as any;
           }
         }

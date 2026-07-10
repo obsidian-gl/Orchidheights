@@ -3,10 +3,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
-import { Bell, ShieldAlert, Check, X, Users, Car, Phone, Lock, Eye, EyeOff, ClipboardList, AlertCircle, Trash2, Plus, Clock, RefreshCw, Megaphone, FileText, Download, Search, Wrench, CheckCircle, Upload } from 'lucide-react';
-import { FlatOwner, Visitor, Vehicle, UserSession, Announcement } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { Bell, ShieldAlert, Check, X, Users, Car, Phone, Lock, Eye, EyeOff, ClipboardList, AlertCircle, Trash2, Plus, Clock, RefreshCw, Megaphone, FileText, Download, Search, Wrench, CheckCircle, Upload, Calendar, Home, User, Dumbbell, Film, Sparkles, BookOpen, MapPin, CheckSquare, PlusCircle } from 'lucide-react';
+import { FlatOwner, Visitor, Vehicle, UserSession, Announcement, AmenityBooking, GymTheatreLog, DailyHelper, AbsenceLog } from '../types';
 import { api, detectServerEnvironment } from '../lib/api';
+import { collection, doc, setDoc, addDoc, getDocs, onSnapshot, updateDoc, deleteDoc, query, where, orderBy } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+
+import VisitorsSection from './resident/VisitorsSection';
+import DirectorySection from './resident/DirectorySection';
+import AmenitiesSection from './resident/AmenitiesSection';
+import LocalServicesSection from './resident/LocalServicesSection';
+import HelpDeskSection from './resident/HelpDeskSection';
+import NoticeSection from './resident/NoticeSection';
+import ProfileSection from './resident/ProfileSection';
 
 let alarmIntervalId: any = null;
 let alarmAudioContext: AudioContext | null = null;
@@ -30,7 +40,6 @@ const playHighFrequencyAlarm = () => {
       const gain = ctx.createGain();
       
       osc.type = 'sine';
-      // Emergency high frequency (alternates between 2800Hz and 3200Hz to grab attention instantly)
       osc.frequency.setValueAtTime(toggle ? 3200 : 2800, now);
       
       gain.gain.setValueAtTime(0, now);
@@ -107,7 +116,7 @@ interface ResidentDashboardProps {
 }
 
 export default function ResidentDashboard({ session, owners, onRefreshOwners }: ResidentDashboardProps) {
-  const { wing, flatNo } = session;
+  const { wing = 'A', flatNo = 101 } = session;
 
   // Active visitor request state
   const [activePoll, setActivePoll] = useState<Visitor[]>([]);
@@ -130,7 +139,7 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   }, [activePoll]);
 
   // Track which visitors have already triggered audio/desktop notifications
-  const notifiedVisitorIds = React.useRef<Set<string>>(new Set());
+  const notifiedVisitorIds = useRef<Set<string>>(new Set());
 
   // Find current owner data
   const myOwnerData = owners.find((o) => o.wing === wing && o.flatNo === flatNo);
@@ -171,10 +180,444 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectReasonText, setRejectReasonText] = useState<string>('');
 
+  // Bottom Bar Main Tabs & Sub-sections
+  const [activeMainTab, setActiveMainTab] = useState<'community' | 'personal'>('community');
+  const [activeSubSection, setActiveSubSection] = useState<string | null>(null);
+
+  // New persistent states
+  const [amenityBookings, setAmenityBookings] = useState<AmenityBooking[]>([]);
+  const [gymTheatreLogs, setGymTheatreLogs] = useState<GymTheatreLog[]>([]);
+  const [dailyHelpers, setDailyHelpers] = useState<DailyHelper[]>([]);
+  const [absenceLogs, setAbsenceLogs] = useState<AbsenceLog[]>([]);
+
   // Sub-tabs state inside Resident Portal
   const [residentTab, setResidentTab] = useState<'home' | 'notices' | 'complaints' | 'financials' | 'contacts'>('home');
 
-  // Complaints state
+  // Load real-time persistent data for Amenities, Helpers, and Absences
+  useEffect(() => {
+    // 1. Amenity Bookings
+    const qBookings = query(collection(db, 'amenities_bookings'), orderBy('createdAt', 'desc'));
+    const unsubBookings = onSnapshot(qBookings, (snapshot) => {
+      const list: AmenityBooking[] = [];
+      snapshot.forEach((doc) => {
+        list.push({ id: doc.id, ...doc.data() } as AmenityBooking);
+      });
+      setAmenityBookings(list);
+    }, (error) => console.error('Error listening to bookings:', error));
+
+    // 2. Gym and Theatre Logs
+    const qLogs = query(collection(db, 'gym_theatre_logs'), orderBy('createdAt', 'desc'));
+    const unsubLogs = onSnapshot(qLogs, (snapshot) => {
+      const list: GymTheatreLog[] = [];
+      snapshot.forEach((doc) => {
+        list.push({ id: doc.id, ...doc.data() } as GymTheatreLog);
+      });
+      setGymTheatreLogs(list);
+    }, (error) => console.error('Error listening to logs:', error));
+
+    // 3. Daily Helpers and Seeding
+    const qHelpers = collection(db, 'daily_helpers');
+    const unsubHelpers = onSnapshot(qHelpers, async (snapshot) => {
+      if (snapshot.empty) {
+        // Seed default helpers
+        const defaults = [
+          { name: 'Pooja (Maid)', phone: '9876543210', role: 'Maid', flats: ['B-1104', 'B-1102'] },
+          { name: 'Ramesh (Milkman)', phone: '9876543211', role: 'Milkman', flats: ['B-1104', 'A-102'] },
+          { name: 'Suresh (Cleaner)', phone: '9876543212', role: 'Car Cleaner', flats: ['B-1104'] },
+          { name: 'Kamlesh (Plumber)', phone: '9876543213', role: 'Other', flats: [] },
+        ];
+        for (const item of defaults) {
+          try {
+            await addDoc(collection(db, 'daily_helpers'), item);
+          } catch (e) {
+            console.error('Seeding error:', e);
+          }
+        }
+      } else {
+        const list: DailyHelper[] = [];
+        snapshot.forEach((doc) => {
+          list.push({ id: doc.id, ...doc.data() } as DailyHelper);
+        });
+        setDailyHelpers(list);
+      }
+    }, (error) => console.error('Error listening to helpers:', error));
+
+    // 4. Absence Logs
+    const qAbsence = query(collection(db, 'absence_logs'), orderBy('createdAt', 'desc'));
+    const unsubAbsences = onSnapshot(qAbsence, (snapshot) => {
+      const list: AbsenceLog[] = [];
+      snapshot.forEach((doc) => {
+        list.push({ id: doc.id, ...doc.data() } as AbsenceLog);
+      });
+      setAbsenceLogs(list);
+    }, (error) => console.error('Error listening to absence logs:', error));
+
+    return () => {
+      unsubBookings();
+      unsubLogs();
+      unsubHelpers();
+      unsubAbsences();
+    };
+  }, []);
+
+  // Amenities Function booking form states
+  const [fPropertyName, setFPropertyName] = useState<string>('Clubhouse Party Hall');
+  const [fDateFrom, setFDateFrom] = useState<string>('');
+  const [fDateTo, setFDateTo] = useState<string>('');
+  const [fReason, setFReason] = useState<string>('');
+  const [fStuffNeeded, setFStuffNeeded] = useState<string>('');
+  const [fParkingRequest, setFParkingRequest] = useState<string>('');
+  const [amenityBookingError, setAmenityBookingError] = useState<string>('');
+  const [amenityBookingSuccess, setAmenityBookingSuccess] = useState<string>('');
+
+  // Gym / Theatre logs form states
+  const [gymTheatreSuccess, setGymTheatreSuccess] = useState<string>('');
+  const [gymTheatreError, setGymTheatreError] = useState<string>('');
+  const [exitPhotoBase64, setExitPhotoBase64] = useState<string>('');
+  const [activeCheckInLog, setActiveCheckInLog] = useState<GymTheatreLog | null>(null);
+  const [showExitPhotoModal, setShowExitPhotoModal] = useState<boolean>(false);
+  const [exitPhotoTimeError, setExitPhotoTimeError] = useState<boolean>(false);
+
+  // Absence form states
+  const [absDateFrom, setAbsDateFrom] = useState<string>('');
+  const [absDateTo, setAbsDateTo] = useState<string>('');
+  const [absMilkRedirect, setAbsMilkRedirect] = useState<string>('');
+  const [absNewspaperRedirect, setAbsNewspaperRedirect] = useState<string>('');
+  const [absParcelRedirect, setAbsParcelRedirect] = useState<string>('');
+  const [absenceError, setAbsenceError] = useState<string>('');
+  const [absenceSuccess, setAbsenceSuccess] = useState<string>('');
+
+  // Download 3-month visitor logs as CSV
+  const handleDownloadVisitorReport = () => {
+    const threeMonthsAgo = new Date();
+    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+    
+    const reportData = guestHistory.filter(v => new Date(v.requestTime) >= threeMonthsAgo);
+    
+    let csvContent = "data:text/csv;charset=utf-8,";
+    csvContent += "Visitor Name,Mobile,Wing,Flat,Reason,Type,Visitor Count,Status,Request Time,Responded Time,Responded By,Reject Reason\n";
+    
+    reportData.forEach(v => {
+      const row = [
+        `"${v.fullName.replace(/"/g, '""')}"`,
+        `"${v.mobileNumber}"`,
+        `"${v.wing}"`,
+        `"${v.flatNo}"`,
+        `"${(v.reason || '').replace(/"/g, '""')}"`,
+        `"${v.guestType}"`,
+        `"${v.visitorCount || 1}"`,
+        `"${v.status}"`,
+        `"${v.requestTime}"`,
+        `"${v.respondedTime || ''}"`,
+        `"${(v.respondedBy || '').replace(/"/g, '""')}"`,
+        `"${(v.rejectReason || '').replace(/"/g, '""')}"`
+      ].join(",");
+      csvContent += row + "\n";
+    });
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `visitor_report_flat_${wing}-${flatNo}_3months.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Submit function booking request
+  const handleAddAmenityBooking = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAmenityBookingError('');
+    setAmenityBookingSuccess('');
+    
+    if (!fDateFrom || !fDateTo || !fReason.trim() || !fStuffNeeded.trim()) {
+      setAmenityBookingError('Please fill in all the required fields.');
+      return;
+    }
+
+    try {
+      const newBooking: Omit<AmenityBooking, 'id'> = {
+        flatId: `${wing}-${flatNo}`,
+        propertyName: fPropertyName,
+        dateFrom: fDateFrom,
+        dateTo: fDateTo,
+        reason: fReason.trim(),
+        stuffNeeded: fStuffNeeded.trim(),
+        parkingRequest: fParkingRequest.trim(),
+        approvedFlats: [`${wing}-${flatNo}`], // current owner auto-approves
+        createdAt: new Date().toISOString()
+      };
+      await addDoc(collection(db, 'amenities_bookings'), newBooking);
+      setAmenityBookingSuccess('Function clubhouse booking registered successfully on the public board!');
+      setFDateFrom('');
+      setFDateTo('');
+      setFReason('');
+      setFStuffNeeded('');
+      setFParkingRequest('');
+    } catch (err: any) {
+      setAmenityBookingError(err.message || 'Failed to request booking.');
+    }
+  };
+
+  // Vote or Toggle support for a function booking
+  const handleVoteAmenityBooking = async (bookingId: string) => {
+    const currentFlat = `${wing}-${flatNo}`;
+    const target = amenityBookings.find(b => b.id === bookingId);
+    if (!target) return;
+
+    let updatedApprovedFlats = [...(target.approvedFlats || [])];
+    if (updatedApprovedFlats.includes(currentFlat)) {
+      updatedApprovedFlats = updatedApprovedFlats.filter(f => f !== currentFlat);
+    } else {
+      updatedApprovedFlats.push(currentFlat);
+    }
+
+    try {
+      await updateDoc(doc(db, 'amenities_bookings', bookingId), {
+        approvedFlats: updatedApprovedFlats
+      });
+    } catch (error) {
+      console.error('Failed to vote booking:', error);
+    }
+  };
+
+  // Check In to Gym / Theatre
+  const handleCheckInGymTheatre = async (amenity: 'Gym' | 'Theatre') => {
+    setGymTheatreSuccess('');
+    setGymTheatreError('');
+    const flatId = `${wing}-${flatNo}`;
+    
+    // Check if flat is already checked in and hasn't checked out
+    const activeSession = gymTheatreLogs.find(l => l.flatId === flatId && l.amenity === amenity && !l.checkOutTime);
+    if (activeSession) {
+      setGymTheatreError(`Your flat is already checked into ${amenity}. Please check out first.`);
+      return;
+    }
+
+    const payload: Omit<GymTheatreLog, 'id'> = {
+      flatId,
+      amenity,
+      checkInTime: new Date().toISOString(),
+      createdAt: new Date().toISOString()
+    };
+
+    try {
+      await addDoc(collection(db, 'gym_theatre_logs'), payload);
+      setGymTheatreSuccess(`Checked in to ${amenity} successfully!`);
+    } catch (err: any) {
+      setGymTheatreError(err.message || 'Check-in failed.');
+    }
+  };
+
+  // Check Out Gym / Theatre Flow initiator
+  const handleCheckOutGymTheatreFlow = (log: GymTheatreLog) => {
+    setGymTheatreError('');
+    setGymTheatreSuccess('');
+    setActiveCheckInLog(log);
+    setExitPhotoBase64('');
+    setExitPhotoTimeError(false);
+    setShowExitPhotoModal(true);
+  };
+
+  // Handle Photo input conversion
+  const handleExitPhotoChange = (file: File) => {
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) {
+      setGymTheatreError('Exit Photo size exceeds 8MB maximum limit.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (e.target?.result) {
+        setExitPhotoBase64(e.target.result as string);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Confirm Check Out with Image upload
+  const handleConfirmCheckOut = async () => {
+    if (!activeCheckInLog) return;
+    if (!exitPhotoBase64) {
+      setGymTheatreError('An exit checkout selfie snapshot is required.');
+      return;
+    }
+
+    const checkInTime = new Date(activeCheckInLog.checkInTime).getTime();
+    const now = new Date();
+    const nowTime = now.getTime();
+    const elapsedMs = nowTime - checkInTime;
+    const elapsedMinutes = Math.floor(elapsedMs / 60000);
+
+    // Mandate recapturing exit photo if elapsed session exceeds 15 minutes!
+    if (elapsedMinutes > 15) {
+      setExitPhotoTimeError(true);
+      setGymTheatreError('Your gym/theatre check-in time was more than 15 minutes ago. For security regulations, you must capture a brand new real-time checkout photo.');
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, 'gym_theatre_logs', activeCheckInLog.id), {
+        checkOutTime: now.toISOString(),
+        exitPhotoUrl: exitPhotoBase64,
+        durationMinutes: elapsedMinutes
+      });
+      setGymTheatreSuccess(`Checked out of ${activeCheckInLog.amenity} successfully! Total session: ${elapsedMinutes} minutes.`);
+      setShowExitPhotoModal(false);
+      setActiveCheckInLog(null);
+      setExitPhotoBase64('');
+      setExitPhotoTimeError(false);
+    } catch (err: any) {
+      setGymTheatreError(err.message || 'Check-out failed.');
+    }
+  };
+
+  // Map Daily Helpers mapping toggle
+  const handleToggleHelperMapping = async (helperId: string) => {
+    const flatId = `${wing}-${flatNo}`;
+    const target = dailyHelpers.find(h => h.id === helperId);
+    if (!target) return;
+
+    let updatedFlats = [...(target.flats || [])];
+    if (updatedFlats.includes(flatId)) {
+      updatedFlats = updatedFlats.filter(f => f !== flatId);
+    } else {
+      updatedFlats.push(flatId);
+    }
+
+    try {
+      await updateDoc(doc(db, 'daily_helpers', helperId), {
+        flats: updatedFlats
+      });
+    } catch (error) {
+      console.error('Failed to update helper flat assignment:', error);
+    }
+  };
+
+  // Absence Log Planner Actions
+  const handleSaveAbsence = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAbsenceSuccess('');
+    setAbsenceError('');
+
+    if (!absDateFrom || !absDateTo) {
+      setAbsenceError('Please choose planned departure and return dates.');
+      return;
+    }
+
+    const flatId = `${wing}-${flatNo}`;
+    const payload: Omit<AbsenceLog, 'id'> = {
+      flatId,
+      dateFrom: absDateFrom,
+      dateTo: absDateTo,
+      milkRedirectFlat: absMilkRedirect.trim() || undefined,
+      newspaperRedirectFlat: absNewspaperRedirect.trim() || undefined,
+      parcelRedirectFlat: absParcelRedirect.trim() || undefined,
+      createdAt: new Date().toISOString()
+    };
+
+    try {
+      await addDoc(collection(db, 'absence_logs'), payload);
+      setAbsenceSuccess('Your planned absence vacation calendar block has been registered. The gatekeeper has been automated to bypass alerting your flat.');
+      setAbsDateFrom('');
+      setAbsDateTo('');
+      setAbsMilkRedirect('');
+      setAbsNewspaperRedirect('');
+      setAbsParcelRedirect('');
+    } catch (err: any) {
+      setAbsenceError(err.message || 'Failed to save planned vacation blocks.');
+    }
+  };
+
+  const handleCancelAbsence = async () => {
+    const flatId = `${wing}-${flatNo}`;
+    const active = absenceLogs.find((a) => a.flatId === flatId);
+    if (!active) return;
+    if (confirm('Cancel your planned absence calendar? This will immediately resume normal daily helper alarms and notifications.')) {
+      try {
+        await deleteDoc(doc(db, 'absence_logs', active.id));
+        setAbsenceSuccess('Absence vacation period canceled. Helper alerts have been re-activated.');
+      } catch (err: any) {
+        setAbsenceError(err.message || 'Failed to delete vacation block.');
+      }
+    }
+  };
+
+  // Delete history records
+  const handleDeleteHistoryRecord = async (visitorId: string, visitorName: string) => {
+    if (confirm(`Remove visitor "${visitorName}" from your local logs panel?`)) {
+      try {
+        await api.deleteVisitor(visitorId);
+        fetchMyGuestHistory();
+      } catch (err: any) {
+        console.error('Failed to delete logs:', err);
+      }
+    }
+  };
+
+  // Profile management updates
+  const updateOwnerProfile = async (fields: Partial<FlatOwner>, msg: string) => {
+    if (!myOwnerData) return;
+    setSavingSettings(true);
+    setSettingsError('');
+    setSettingsSuccess('');
+    try {
+      const res = await api.updateOwner(wing, flatNo, fields);
+      if (res.success) {
+        setSettingsSuccess(msg);
+        onRefreshOwners();
+      } else {
+        setSettingsError(res.message || 'Failed to save updates.');
+      }
+    } catch (err: any) {
+      setSettingsError(err.message || 'Failed to save updates.');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleAddMember = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMember.trim() || !myOwnerData) return;
+    const updatedMembers = [...(myOwnerData.members || []), newMember.trim()];
+    updateOwnerProfile({ members: updatedMembers }, 'Household family member registered successfully.');
+    setNewMember('');
+  };
+
+  const handleRemoveMember = (idx: number) => {
+    if (!myOwnerData) return;
+    const updatedMembers = (myOwnerData.members || []).filter((_, i) => i !== idx);
+    updateOwnerProfile({ members: updatedMembers }, 'Household family member unregistered.');
+  };
+
+  const handleAddVehicle = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!vPlate.trim() || !vModel.trim() || !myOwnerData) return;
+    const newV: Vehicle = {
+      id: Math.random().toString(36).substring(2, 9),
+      type: vType,
+      plateNumber: vPlate.trim().toUpperCase(),
+      brandModel: vModel.trim()
+    };
+    const updatedVehicles = [...(myOwnerData.vehicles || []), newV];
+    updateOwnerProfile({ vehicles: updatedVehicles }, 'Vehicle register plate license registered successfully.');
+    setVPlate('');
+    setVModel('');
+  };
+
+  const handleRemoveVehicle = (vehicleId: string) => {
+    if (!myOwnerData) return;
+    const updatedVehicles = (myOwnerData.vehicles || []).filter(v => v.id !== vehicleId);
+    updateOwnerProfile({ vehicles: updatedVehicles }, 'Vehicle registry plate deleted.');
+  };
+
+  const handleSaveGeneral = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!myOwnerData) return;
+    updateOwnerProfile({ secondaryContact: altContact }, 'Settings updated successfully.');
+  };
+
+  // Complaints, Financials, Contacts state
   const [complaints, setComplaints] = useState<any[]>([]);
   const [loadingComplaints, setLoadingComplaints] = useState<boolean>(false);
   const [compTitle, setCompTitle] = useState<string>('');
@@ -186,16 +629,14 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   const [compError, setCompError] = useState<string>('');
   const [isDragging, setIsDragging] = useState<boolean>(false);
 
-  // Financial Reports state
   const [financials, setFinancials] = useState<any[]>([]);
   const [loadingFinancials, setLoadingFinancials] = useState<boolean>(false);
 
-  // Essential Contacts state
   const [contacts, setContacts] = useState<any[]>([]);
   const [loadingContacts, setLoadingContacts] = useState<boolean>(false);
   const [contactCategoryFilter, setContactCategoryFilter] = useState<string>('all');
+  const [directorySearch, setDirectorySearch] = useState<string>('');
 
-  // Fetch helper methods
   const fetchComplaints = async () => {
     setLoadingComplaints(true);
     try {
@@ -232,18 +673,139 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
     }
   };
 
-  // Trigger loads when tab changes
-  useEffect(() => {
-    if (residentTab === 'complaints') {
-      fetchComplaints();
-    } else if (residentTab === 'financials') {
-      fetchFinancials();
-    } else if (residentTab === 'contacts') {
-      fetchContacts();
-    }
-  }, [residentTab]);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
-  // File change handler
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await detectServerEnvironment();
+      onRefreshOwners();
+      await checkVisitorAlerts();
+      await fetchMyGuestHistory();
+      await fetchComplaints();
+      await fetchFinancials();
+      await fetchContacts();
+    } catch (error) {
+      console.error('Failed to perform manual sync:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // Request desktop notification permission and pre-fetch list databases
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch((err) => console.warn('Notification permission rejected:', err));
+    }
+    fetchComplaints();
+    fetchFinancials();
+    fetchContacts();
+  }, []);
+
+  // Initialize form states from loaded database
+  useEffect(() => {
+    if (myOwnerData) {
+      setAltContact(myOwnerData.secondaryContact || '');
+    }
+  }, [myOwnerData]);
+
+  const checkVisitorAlerts = async () => {
+    if (!wing || !flatNo) return;
+    try {
+      const data = await api.pollVisitorAlerts(wing, flatNo);
+      data.forEach((v) => {
+        if (!notifiedVisitorIds.current.has(v.id)) {
+          notifiedVisitorIds.current.add(v.id);
+          triggerNewVisitorNotification(v);
+        }
+      });
+      setActivePoll(data);
+    } catch (error) {
+      console.error('Failed to poll visitor alerts:', error);
+    }
+  };
+
+  const fetchMyGuestHistory = async () => {
+    if (!wing || !flatNo) return;
+    setLoadingHistory(true);
+    try {
+      const data = await api.getVisitors({ wing, flatNo });
+      setGuestHistory(data);
+    } catch (error) {
+      console.error('Failed to fetch personal history:', error);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  // Subscribe to real-time notifications and fetch initial history on load
+  useEffect(() => {
+    if (!wing || !flatNo) return;
+
+    fetchMyGuestHistory();
+
+    const unsubscribe = api.subscribeNotifications(
+      wing,
+      flatNo,
+      (pendingNotifications) => {
+        pendingNotifications.forEach((v) => {
+          if (!notifiedVisitorIds.current.has(v.id)) {
+            notifiedVisitorIds.current.add(v.id);
+            triggerNewVisitorNotification(v);
+          }
+        });
+        setActivePoll(pendingNotifications);
+      },
+      (error) => {
+        console.error('Real-time notifications subscription failed:', error);
+        checkVisitorAlerts();
+      }
+    );
+
+    const historyInterval = setInterval(() => {
+      fetchMyGuestHistory();
+    }, 5000);
+
+    return () => {
+      unsubscribe();
+      clearInterval(historyInterval);
+    };
+  }, [wing, flatNo]);
+
+  // Check for auto-expiration on the resident dashboard
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = new Date().getTime();
+      const expiryMs = 15 * 60 * 1000;
+      activePoll.forEach(async (v) => {
+        if (v.status === 'pending') {
+          const reqTime = new Date(v.requestTime).getTime();
+          if (now - reqTime > expiryMs) {
+            console.log(`Resident Dashboard: Auto-expiring visitor ${v.fullName}`);
+            await api.respondToVisitor(v.id, 'expired', 'System Auto-Expiry');
+          }
+        }
+      });
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [activePoll]);
+
+  const handleRespond = async (visitorId: string, status: 'approved' | 'rejected', customReason?: string) => {
+    stopHighFrequencyAlarm();
+    try {
+      const responderName = session.ownerName || `Owner of Flat ${wing}-${flatNo}`;
+      const res = await api.respondToVisitor(visitorId, status, responderName, customReason || '');
+      if (res.success) {
+        setActivePoll((prev) => prev.filter((v) => v.id !== visitorId));
+        setRejectingId(null);
+        setRejectReasonText('');
+        fetchMyGuestHistory();
+      }
+    } catch (error) {
+      console.error('Failed to respond to visitor:', error);
+    }
+  };
+
   const handleFileChange = (file: File) => {
     if (!file) return;
     if (file.size > 8 * 1024 * 1024) {
@@ -261,7 +823,6 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
     reader.readAsDataURL(file);
   };
 
-  // Raise a new complaint
   const handleCreateComplaint = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!compTitle.trim() || !compDesc.trim()) return;
@@ -289,1276 +850,419 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
     }
   };
 
-  // Manual sync/refresh state
-  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
-
-  const handleManualRefresh = async () => {
-    setIsRefreshing(true);
-    try {
-      await detectServerEnvironment();
-      onRefreshOwners();
-      await checkVisitorAlerts();
-      await fetchMyGuestHistory();
-      if (residentTab === 'complaints') await fetchComplaints();
-      if (residentTab === 'financials') await fetchFinancials();
-      if (residentTab === 'contacts') await fetchContacts();
-    } catch (error) {
-      console.error('Failed to perform manual sync:', error);
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
-  // Request desktop notification permission on dashboard load
-  useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission().catch((err) => console.warn('Notification permission rejected:', err));
-    }
-  }, []);
-
-  // Initialize form states from loaded database
-  useEffect(() => {
-    if (myOwnerData) {
-      setAltContact(myOwnerData.secondaryContact || '');
-    }
-  }, [myOwnerData]);
-
-  // Fetch pending visitor alerts for this specific flat
-  const checkVisitorAlerts = async () => {
-    if (!wing || !flatNo) return;
-    try {
-      const data = await api.pollVisitorAlerts(wing, flatNo);
-      
-      // Look for brand new pending visitors to trigger alerts
-      data.forEach((v) => {
-        if (!notifiedVisitorIds.current.has(v.id)) {
-          notifiedVisitorIds.current.add(v.id);
-          triggerNewVisitorNotification(v);
-        }
-      });
-
-      setActivePoll(data);
-    } catch (error) {
-      console.error('Failed to poll visitor alerts:', error);
-    }
-  };
-
-  // Fetch personal guest history logs
-  const fetchMyGuestHistory = async () => {
-    if (!wing || !flatNo) return;
-    setLoadingHistory(true);
-    try {
-      const data = await api.getVisitors({ wing, flatNo });
-      setGuestHistory(data);
-    } catch (error) {
-      console.error('Failed to fetch personal history:', error);
-    } finally {
-      setLoadingHistory(false);
-    }
-  };
-
-  // Subscribe to real-time notifications and fetch initial history on load
-  useEffect(() => {
-    if (!wing || !flatNo) return;
-
-    // Fetch initial guest history
-    fetchMyGuestHistory();
-
-    // Set up real-time listener on the 'notifications' collection
-    const unsubscribe = api.subscribeNotifications(
-      wing,
-      flatNo,
-      (pendingNotifications) => {
-        // Look for brand new pending visitors to trigger alerts
-        pendingNotifications.forEach((v) => {
-          if (!notifiedVisitorIds.current.has(v.id)) {
-            notifiedVisitorIds.current.add(v.id);
-            triggerNewVisitorNotification(v);
-          }
-        });
-
-        setActivePoll(pendingNotifications);
-      },
-      (error) => {
-        console.error('Real-time notifications subscription failed, falling back to polling:', error);
-        // Fallback to manual polling ifSnapshot fails
-        checkVisitorAlerts();
-      }
-    );
-
-    // Maintain a slower polling interval (5 seconds) to update historical logs automatically
-    const historyInterval = setInterval(() => {
-      fetchMyGuestHistory();
-    }, 5000);
-
-    return () => {
-      unsubscribe();
-      clearInterval(historyInterval);
-    };
-  }, [wing, flatNo]);
-
-  // Check for auto-expiration on the resident dashboard for safety (redundancy)
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const now = new Date().getTime();
-      const expiryMs = 15 * 60 * 1000; // 15 mins default
-      activePoll.forEach(async (v) => {
-        if (v.status === 'pending') {
-          const reqTime = new Date(v.requestTime).getTime();
-          if (now - reqTime > expiryMs) {
-            console.log(`Resident Dashboard: Auto-expiring visitor ${v.fullName}`);
-            await api.respondToVisitor(v.id, 'expired', 'System Auto-Expiry');
-          }
-        }
-      });
-    }, 5000);
-    return () => clearInterval(timer);
-  }, [activePoll]);
-
-  // Respond to waiting visitor (Accept / Reject)
-  const handleRespond = async (visitorId: string, status: 'approved' | 'rejected', customReason?: string) => {
-    stopHighFrequencyAlarm();
-    try {
-      const responderName = session.ownerName || `Owner of Flat ${wing}-${flatNo}`;
-      const res = await api.respondToVisitor(visitorId, status, responderName, customReason || '');
-      if (res.success) {
-        // Optimistic state clear
-        setActivePoll((prev) => prev.filter((v) => v.id !== visitorId));
-        setRejectingId(null);
-        setRejectReasonText('');
-        fetchMyGuestHistory();
-      }
-    } catch (error) {
-      console.error('Failed to respond to visitor:', error);
-    }
-  };
-
-  // Delete historical visitor record
-  const handleDeleteHistoryRecord = async (id: string, name: string) => {
-    if (!window.confirm(`Are you sure you want to delete the visitor log for "${name}" from your history?`)) {
-      return;
-    }
-    try {
-      const res = await api.deleteVisitor(id);
-      if (res.success) {
-        fetchMyGuestHistory();
-      } else {
-        alert(res.message || 'Failed to delete record.');
-      }
-    } catch (error) {
-      console.error('Failed to delete history:', error);
-      alert('Error deleting log. Please try again.');
-    }
-  };
-
-  // Save changes to backend
-  const updateOwnerProfile = async (updatedData: Partial<FlatOwner>, successMsg: string) => {
-    if (!wing || !flatNo || !myOwnerData) return;
-    setSettingsError('');
-    setSettingsSuccess('');
-    setSavingSettings(true);
-
-    try {
-      const payload = {
-        secondaryContact: updatedData.secondaryContact !== undefined ? updatedData.secondaryContact : myOwnerData.secondaryContact,
-        members: updatedData.members !== undefined ? updatedData.members : myOwnerData.members,
-        vehicles: updatedData.vehicles !== undefined ? updatedData.vehicles : myOwnerData.vehicles,
-        password: updatedData.phone !== undefined ? undefined : newPassword || undefined // send password if set
-      };
-
-      const res = await api.updateOwner(wing, flatNo, payload);
-
-      if (res.success) {
-        setSettingsSuccess(successMsg);
-        if (newPassword) setNewPassword(''); // clear password input
-        onRefreshOwners(); // trigger reload in App.tsx
-      } else {
-        setSettingsError(res.message || 'Failed to update profile.');
-      }
-    } catch (error: any) {
-      console.error('Profile update error:', error);
-      setSettingsError(error.message || 'Server connection error.');
-    } finally {
-      setSavingSettings(false);
-    }
-  };
-
-  // Add family member
-  const handleAddMember = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMember.trim() || !myOwnerData) return;
-
-    if (myOwnerData.members.length >= 2) {
-      setSettingsError('You can register a maximum of 2 family members per flat.');
-      return;
-    }
-
-    const updatedMembers = [...myOwnerData.members, newMember.trim()];
-    updateOwnerProfile({ members: updatedMembers }, `Added ${newMember.trim()} to household.`);
-    setNewMember('');
-  };
-
-  // Remove family member
-  const handleRemoveMember = (idx: number) => {
-    if (!myOwnerData) return;
-    const updatedMembers = [...myOwnerData.members];
-    const removed = updatedMembers.splice(idx, 1)[0];
-    updateOwnerProfile({ members: updatedMembers }, `Removed ${removed} from household.`);
-  };
-
-  // Add vehicle
-  const handleAddVehicle = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!vPlate.trim() || !vModel.trim() || !myOwnerData) return;
-
-    const newV: Vehicle = {
-      id: 'vh_' + Math.random().toString(36).substr(2, 9),
-      type: vType,
-      plateNumber: vPlate.toUpperCase().trim(),
-      brandModel: vModel.trim()
-    };
-
-    const updatedVehicles = [...myOwnerData.vehicles, newV];
-    updateOwnerProfile({ vehicles: updatedVehicles }, `Registered vehicle ${vPlate.toUpperCase()}.`);
-    setVPlate('');
-    setVModel('');
-  };
-
-  // Remove vehicle
-  const handleRemoveVehicle = (vehicleId: string) => {
-    if (!myOwnerData) return;
-    const updatedVehicles = myOwnerData.vehicles.filter((v) => v.id !== vehicleId);
-    updateOwnerProfile({ vehicles: updatedVehicles }, 'Vehicle unregistered successfully.');
-  };
-
-  // Save generic settings (alt contact & password)
-  const handleSaveGeneral = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!myOwnerData) return;
-    updateOwnerProfile({ secondaryContact: altContact }, 'Contact details & password updated successfully.');
-  };
-
   return (
-    <div className="space-y-8 text-slate-800">
+    <div className="space-y-6 text-slate-800 pb-24 text-left">
       
-      {isAlarmActive && (
-        <div className="bg-red-600 border border-red-700 text-white font-bold p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 animate-pulse shadow-lg">
-          <div className="flex items-center space-x-3 text-left">
-            <span className="w-3 h-3 bg-white rounded-full animate-ping shrink-0"></span>
-            <div>
-              <p className="text-sm font-black tracking-tight flex items-center gap-1.5">
-                <span>🚨 VISITOR ALARM RINGING!</span>
-              </p>
-              <p className="text-[10px] text-red-100 font-medium">A high frequency emergency alert is playing to grab your attention.</p>
-            </div>
+      {/* Top Header Panel */}
+      <div className="bg-white border border-slate-200 rounded-3xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+        <div className="flex items-center space-x-3.5 text-left w-full sm:w-auto">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-150 text-indigo-600 font-display font-black text-lg flex items-center justify-center uppercase select-none shadow-sm">
+            {myOwnerData?.nameEn?.substring(0, 2) || 'OH'}
           </div>
-          <button
-            onClick={() => stopHighFrequencyAlarm()}
-            className="w-full sm:w-auto bg-white text-red-600 hover:bg-red-50 text-xs font-extrabold uppercase px-5 py-2.5 rounded-xl shadow-md transition-all duration-150 transform hover:scale-[1.02] cursor-pointer"
-          >
-            Silence Alarm
-          </button>
+          <div>
+            <div className="flex items-center space-x-1.5">
+              <span className="font-display font-bold text-sm text-slate-800">Hi, {myOwnerData?.nameEn || 'Resident'}!</span>
+              <span className="bg-indigo-100 text-indigo-700 font-mono text-[8px] font-black px-1.5 py-0.5 rounded uppercase">Flat {wing}-{flatNo}</span>
+            </div>
+            <p className="text-[10px] text-slate-400 font-medium">Orchid Heights Owners Association • (ઓર્કીડ સોસાયટી)</p>
+          </div>
         </div>
-      )}
 
-      {/* Top Header Controls: Manual Refresh & Sync */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-white border border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm gap-4">
-        <div className="text-left">
-          <h1 className="font-display font-bold text-xl text-slate-800 tracking-tight flex items-center space-x-2">
-            <span className="inline-block w-2.5 h-2.5 bg-indigo-600 rounded-full animate-pulse"></span>
-            <span>Resident Dashboard • Flat {wing}-{flatNo}</span>
-          </h1>
-          <p className="text-xs text-slate-400 mt-0.5">Logged in as {myOwnerData ? myOwnerData.nameEn : `Flat ${wing}-${flatNo}`}</p>
-        </div>
-        <div>
+        <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+          {/* Refresh button */}
           <button
-            type="button"
             onClick={handleManualRefresh}
             disabled={isRefreshing}
-            className="w-full sm:w-auto bg-slate-50 hover:bg-slate-100 active:bg-slate-200 text-slate-700 hover:text-slate-900 border border-slate-200 hover:border-slate-300 disabled:opacity-60 px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center space-x-2 transition cursor-pointer shadow-sm"
+            title="Refresh database"
+            className="p-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-500 hover:text-slate-700 rounded-xl transition cursor-pointer"
           >
-            <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${isRefreshing ? 'animate-spin text-indigo-600' : ''}`} />
-            <span>{isRefreshing ? 'Syncing...' : 'Manual Refresh'}</span>
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          </button>
+
+          {/* SOS Alert trigger button */}
+          <button
+            onClick={() => {
+              if (confirm("🚨 EMERGENCY SOS BROADCAST: Trigger society-wide emergency assistance alarm to security guards?")) {
+                playHighFrequencyAlarm();
+                alert("🔴 High Frequency SOS Alarm has been triggered. Please contact society guard station at +91 99999-00000 immediately.");
+              }
+            }}
+            className="bg-red-600 hover:bg-red-700 text-white font-extrabold uppercase px-4 py-2.5 rounded-xl text-[10px] flex items-center space-x-1.5 shadow-md cursor-pointer transition-all transform active:scale-95"
+          >
+            <ShieldAlert className="w-4 h-4 animate-pulse" />
+            <span>Emergency SOS</span>
           </button>
         </div>
       </div>
 
-      {/* Portal Tab Bar Navigation */}
-      <div className="flex overflow-x-auto gap-2 bg-white border border-slate-200 p-2 rounded-2xl shadow-sm scrollbar-none shrink-0">
+      {/* --- Main Routing --- */}
+      {activeMainTab === 'community' ? (
+        activeSubSection === null ? (
+          /* 6-Tile Bento Grid Dashboard */
+          <div className="space-y-6">
+            
+            {/* Active visitor alarm ringing banner at top level */}
+            {isAlarmActive && (
+              <div className="bg-red-600 text-white p-4 rounded-2xl flex items-center justify-between animate-pulse shadow-md">
+                <p className="text-xs font-bold">🚨 ACTIVE VISITOR AWAITING ENTRY APPROVAL!</p>
+                <button
+                  onClick={() => stopHighFrequencyAlarm()}
+                  className="bg-white text-red-600 font-black px-4 py-1.5 rounded-xl text-[10px]"
+                >
+                  Silence Alarm
+                </button>
+              </div>
+            )}
+
+            {/* Quick alert bar for waiting visitors */}
+            {activePoll.length > 0 && (
+              <div className="bg-amber-500 text-slate-950 p-4 rounded-2xl flex items-center justify-between font-bold text-xs shadow-sm border border-amber-400">
+                <p>🚪 {activePoll.length} visitor(s) are waiting at the main security gate right now!</p>
+                <button
+                  onClick={() => setActiveSubSection('visitors')}
+                  className="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider"
+                >
+                  Approve Entry
+                </button>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              
+              {/* Card 1: Visitors */}
+              <div
+                onClick={() => setActiveSubSection('visitors')}
+                className="bg-white border border-slate-200 hover:border-indigo-400 p-6 rounded-3xl shadow-sm hover:shadow-md cursor-pointer transition duration-150 flex flex-col justify-between space-y-4 group text-left relative overflow-hidden"
+              >
+                <div className="space-y-3">
+                  <div className="w-10 h-10 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center shadow-sm">
+                    <Users className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-display font-extrabold text-sm text-slate-800 uppercase tracking-tight group-hover:text-indigo-600 transition">
+                      Gate Visitors
+                    </h4>
+                    <p className="text-[10px] text-slate-400 font-medium leading-relaxed mt-0.5">
+                      Verify waiting entries, download 3-month logs, and review guest approvals.
+                    </p>
+                  </div>
+                </div>
+                <div className="text-[10px] text-indigo-600 font-bold flex items-center">
+                  <span>Enter visitors deck →</span>
+                </div>
+              </div>
+
+              {/* Card 2: Resident Directory */}
+              <div
+                onClick={() => setActiveSubSection('directory')}
+                className="bg-white border border-slate-200 hover:border-indigo-400 p-6 rounded-3xl shadow-sm hover:shadow-md cursor-pointer transition duration-150 flex flex-col justify-between space-y-4 group text-left relative overflow-hidden"
+              >
+                <div className="space-y-3">
+                  <div className="w-10 h-10 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center shadow-sm">
+                    <BookOpen className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-display font-extrabold text-sm text-slate-800 uppercase tracking-tight group-hover:text-indigo-600 transition">
+                      Resident Directory
+                    </h4>
+                    <p className="text-[10px] text-slate-400 font-medium leading-relaxed mt-0.5">
+                      All neighbours, family members, alternative numbers, and registered vehicles.
+                    </p>
+                  </div>
+                </div>
+                <div className="text-[10px] text-indigo-600 font-bold flex items-center">
+                  <span>Search neighbours directory →</span>
+                </div>
+              </div>
+
+              {/* Card 3: Amenities & Clubhouse */}
+              <div
+                onClick={() => setActiveSubSection('amenity')}
+                className="bg-white border border-slate-200 hover:border-indigo-400 p-6 rounded-3xl shadow-sm hover:shadow-md cursor-pointer transition duration-150 flex flex-col justify-between space-y-4 group text-left relative overflow-hidden"
+              >
+                <div className="space-y-3">
+                  <div className="w-10 h-10 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center shadow-sm">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-display font-extrabold text-sm text-slate-800 uppercase tracking-tight group-hover:text-indigo-600 transition">
+                      Amenities Bookings
+                    </h4>
+                    <p className="text-[10px] text-slate-400 font-medium leading-relaxed mt-0.5">
+                      Clubhouse function requests, voter approvals, Gym & Movie Theatre entry/exit logs.
+                    </p>
+                  </div>
+                </div>
+                <div className="text-[10px] text-indigo-600 font-bold flex items-center">
+                  <span>Book Clubhouse or view Gym logs →</span>
+                </div>
+              </div>
+
+              {/* Card 4: Local Services */}
+              <div
+                onClick={() => setActiveSubSection('services')}
+                className="bg-white border border-slate-200 hover:border-indigo-400 p-6 rounded-3xl shadow-sm hover:shadow-md cursor-pointer transition duration-150 flex flex-col justify-between space-y-4 group text-left relative overflow-hidden"
+              >
+                <div className="space-y-3">
+                  <div className="w-10 h-10 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center shadow-sm">
+                    <Wrench className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-display font-extrabold text-sm text-slate-800 uppercase tracking-tight group-hover:text-indigo-600 transition">
+                      Local Services
+                    </h4>
+                    <p className="text-[10px] text-slate-400 font-medium leading-relaxed mt-0.5">
+                      Assign daily helpers (Maids, Milkmen) to your flat to bypass gatekeeper alerts.
+                    </p>
+                  </div>
+                </div>
+                <div className="text-[10px] text-indigo-600 font-bold flex items-center">
+                  <span>Manage daily helper mappings →</span>
+                </div>
+              </div>
+
+              {/* Card 5: Help Desk & Financials */}
+              <div
+                onClick={() => setActiveSubSection('helpdesk')}
+                className="bg-white border border-slate-200 hover:border-indigo-400 p-6 rounded-3xl shadow-sm hover:shadow-md cursor-pointer transition duration-150 flex flex-col justify-between space-y-4 group text-left relative overflow-hidden"
+              >
+                <div className="space-y-3">
+                  <div className="w-10 h-10 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center shadow-sm">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-display font-extrabold text-sm text-slate-800 uppercase tracking-tight group-hover:text-indigo-600 transition">
+                      Help Desk & Financials
+                    </h4>
+                    <p className="text-[10px] text-slate-400 font-medium leading-relaxed mt-0.5">
+                      File maintenance complaints, review processed update logs, download society ledgers.
+                    </p>
+                  </div>
+                </div>
+                <div className="text-[10px] text-indigo-600 font-bold flex items-center">
+                  <span>File complaints or review balance sheets →</span>
+                </div>
+              </div>
+
+              {/* Card 6: Notice Board */}
+              <div
+                onClick={() => setActiveSubSection('notices')}
+                className="bg-white border border-slate-200 hover:border-indigo-400 p-6 rounded-3xl shadow-sm hover:shadow-md cursor-pointer transition duration-150 flex flex-col justify-between space-y-4 group text-left relative overflow-hidden"
+              >
+                <div className="space-y-3">
+                  <div className="w-10 h-10 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center shadow-sm">
+                    <Megaphone className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-display font-extrabold text-sm text-slate-800 uppercase tracking-tight group-hover:text-indigo-600 transition">
+                      Notice Board
+                    </h4>
+                    <p className="text-[10px] text-slate-400 font-medium leading-relaxed mt-0.5">
+                      Important notices, water schedules, power shutdowns targeted to your flat.
+                    </p>
+                  </div>
+                </div>
+                <div className="text-[10px] text-indigo-600 font-bold flex items-center">
+                  <span>Read active society announcements →</span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        ) : (
+          /* Sub-section Detail Screen Pane with BACK button */
+          <div className="space-y-6">
+            <button
+              onClick={() => setActiveSubSection(null)}
+              className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-4 py-2 rounded-xl flex items-center space-x-1 transition cursor-pointer select-none"
+            >
+              <span>← Back to Community Dashboard</span>
+            </button>
+
+            {activeSubSection === 'visitors' && (
+              <VisitorsSection
+                wing={wing}
+                flatNo={flatNo}
+                activePoll={activePoll}
+                guestHistory={guestHistory}
+                loadingHistory={loadingHistory}
+                rejectingId={rejectingId}
+                setRejectingId={setRejectingId}
+                rejectReasonText={rejectReasonText}
+                setRejectReasonText={setRejectReasonText}
+                handleRespond={handleRespond}
+                handleDeleteHistoryRecord={handleDeleteHistoryRecord}
+                handleDownloadVisitorReport={handleDownloadVisitorReport}
+                isAlarmActive={isAlarmActive}
+                stopAlarm={stopHighFrequencyAlarm}
+              />
+            )}
+
+            {activeSubSection === 'directory' && (
+              <DirectorySection
+                owners={owners}
+                directorySearch={directorySearch}
+                setDirectorySearch={setDirectorySearch}
+                dailyHelpers={dailyHelpers}
+                absenceLogs={absenceLogs}
+              />
+            )}
+
+            {activeSubSection === 'amenity' && (
+              <AmenitiesSection
+                wing={wing}
+                flatNo={flatNo}
+                amenityBookings={amenityBookings}
+                gymTheatreLogs={gymTheatreLogs}
+                handleAddAmenityBooking={handleAddAmenityBooking}
+                handleVoteAmenityBooking={handleVoteAmenityBooking}
+                handleCheckInGymTheatre={handleCheckInGymTheatre}
+                handleCheckOutGymTheatreFlow={handleCheckOutGymTheatreFlow}
+                showExitPhotoModal={showExitPhotoModal}
+                setShowExitPhotoModal={setShowExitPhotoModal}
+                exitPhotoBase64={exitPhotoBase64}
+                handleExitPhotoChange={handleExitPhotoChange}
+                handleConfirmCheckOut={handleConfirmCheckOut}
+                exitPhotoTimeError={exitPhotoTimeError}
+                gymTheatreSuccess={gymTheatreSuccess}
+                gymTheatreError={gymTheatreError}
+                amenityBookingSuccess={amenityBookingSuccess}
+                amenityBookingError={amenityBookingError}
+                fPropertyName={fPropertyName}
+                setFPropertyName={setFPropertyName}
+                fDateFrom={fDateFrom}
+                setFDateFrom={setFDateFrom}
+                fDateTo={fDateTo}
+                setFDateTo={setFDateTo}
+                fReason={fReason}
+                setFReason={setFReason}
+                fStuffNeeded={fStuffNeeded}
+                setFStuffNeeded={setFStuffNeeded}
+                fParkingRequest={fParkingRequest}
+                setFParkingRequest={setFParkingRequest}
+                activeCheckInLog={activeCheckInLog}
+              />
+            )}
+
+            {activeSubSection === 'services' && (
+              <LocalServicesSection
+                wing={wing}
+                flatNo={flatNo}
+                dailyHelpers={dailyHelpers}
+                handleToggleHelperMapping={handleToggleHelperMapping}
+              />
+            )}
+
+            {activeSubSection === 'helpdesk' && (
+              <HelpDeskSection
+                wing={wing}
+                flatNo={flatNo}
+                complaints={complaints}
+                loadingComplaints={loadingComplaints}
+                financials={financials}
+                loadingFinancials={loadingFinancials}
+                onRefreshComplaints={fetchComplaints}
+                compTitle={compTitle}
+                setCompTitle={setCompTitle}
+                compDesc={compDesc}
+                setCompDesc={setCompDesc}
+                compMedia={compMedia}
+                setCompMedia={setCompMedia}
+                compMediaName={compMediaName}
+                setCompMediaName={setCompMediaName}
+                compMediaType={compMediaType}
+                setCompMediaType={setCompMediaType}
+                compSuccess={compSuccess}
+                setCompSuccess={setCompSuccess}
+                compError={compError}
+                setCompError={setCompError}
+                handleFileChange={handleFileChange}
+              />
+            )}
+
+            {activeSubSection === 'notices' && (
+              <NoticeSection
+                wing={wing}
+                flatNo={flatNo}
+                announcements={announcements}
+              />
+            )}
+          </div>
+        )
+      ) : (
+        /* Master "You" Profile Section */
+        <ProfileSection
+          wing={wing}
+          flatNo={flatNo}
+          myOwnerData={myOwnerData || null}
+          savingSettings={savingSettings}
+          settingsSuccess={settingsSuccess}
+          settingsError={settingsError}
+          newMember={newMember}
+          setNewMember={setNewMember}
+          handleAddMember={handleAddMember}
+          handleRemoveMember={handleRemoveMember}
+          vType={vType}
+          setVType={setVType}
+          vPlate={vPlate}
+          setVPlate={setVPlate}
+          vModel={vModel}
+          setVModel={setVModel}
+          handleAddVehicle={handleAddVehicle}
+          handleRemoveVehicle={handleRemoveVehicle}
+          altContact={altContact}
+          setAltContact={setAltContact}
+          showPass={showPass}
+          setShowPass={setShowPass}
+          newPassword={newPassword}
+          setNewPassword={setNewPassword}
+          handleSaveGeneral={handleSaveGeneral}
+          absenceLogs={absenceLogs}
+          dailyHelpers={dailyHelpers}
+          absDateFrom={absDateFrom}
+          setAbsDateFrom={setAbsDateFrom}
+          absDateTo={absDateTo}
+          setAbsDateTo={setAbsDateTo}
+          absMilkRedirect={absMilkRedirect}
+          setAbsMilkRedirect={setAbsMilkRedirect}
+          absNewspaperRedirect={absNewspaperRedirect}
+          setAbsNewspaperRedirect={setAbsNewspaperRedirect}
+          absParcelRedirect={absParcelRedirect}
+          setAbsParcelRedirect={setAbsParcelRedirect}
+          absenceSuccess={absenceSuccess}
+          absenceError={absenceError}
+          handleSaveAbsence={handleSaveAbsence}
+          handleCancelAbsence={handleCancelAbsence}
+        />
+      )}
+
+      {/* Floating Bottom Navigation Bar */}
+      <div className="fixed bottom-0 inset-x-0 bg-white border-t border-slate-200 py-3.5 px-6 flex items-center justify-around z-40 shadow-xl max-w-md mx-auto rounded-t-3xl">
         <button
-          onClick={() => setResidentTab('home')}
-          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center space-x-2 shrink-0 cursor-pointer ${residentTab === 'home' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
+          onClick={() => {
+            setActiveMainTab('community');
+            setActiveSubSection(null);
+          }}
+          className={`flex flex-col items-center gap-1 cursor-pointer transition select-none ${
+            activeMainTab === 'community' ? 'text-indigo-600 font-extrabold' : 'text-slate-400 hover:text-slate-600'
+          }`}
         >
-          <Bell className="w-4 h-4" />
-          <span>My Flat & History</span>
+          <Home className="w-5.5 h-5.5" />
+          <span className="text-[10px] uppercase tracking-wider font-bold">Community</span>
         </button>
+
         <button
-          onClick={() => setResidentTab('notices')}
-          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center space-x-2 shrink-0 cursor-pointer ${residentTab === 'notices' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
+          onClick={() => {
+            setActiveMainTab('personal');
+          }}
+          className={`flex flex-col items-center gap-1 cursor-pointer transition select-none ${
+            activeMainTab === 'personal' ? 'text-indigo-600 font-extrabold' : 'text-slate-400 hover:text-slate-600'
+          }`}
         >
-          <Megaphone className="w-4 h-4" />
-          <span>Society Notices</span>
-        </button>
-        <button
-          onClick={() => setResidentTab('complaints')}
-          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center space-x-2 shrink-0 cursor-pointer ${residentTab === 'complaints' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
-        >
-          <ClipboardList className="w-4 h-4" />
-          <span>Resolution Board</span>
-        </button>
-        <button
-          onClick={() => setResidentTab('financials')}
-          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center space-x-2 shrink-0 cursor-pointer ${residentTab === 'financials' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
-        >
-          <FileText className="w-4 h-4" />
-          <span>Financial Ledger</span>
-        </button>
-        <button
-          onClick={() => setResidentTab('contacts')}
-          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center space-x-2 shrink-0 cursor-pointer ${residentTab === 'contacts' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
-        >
-          <Phone className="w-4 h-4" />
-          <span>Address Book</span>
+          <User className="w-5.5 h-5.5" />
+          <span className="text-[10px] uppercase tracking-wider font-bold">You (Profile)</span>
         </button>
       </div>
-
-      {/* Tab 1: Home View (Visitor Approvals, History log, bento profile configs) */}
-      {residentTab === 'home' && (
-        <div className="space-y-8">
-          {/* URGENT PENDING APPROVAL ALERTS */}
-          {activePoll.length > 0 && (
-            <div className="bg-gradient-to-r from-red-500 to-amber-600 rounded-3xl p-6 text-white shadow-2xl border-2 border-amber-400 relative overflow-hidden animate-pulse">
-              <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
-                <Bell className="w-40 h-40" />
-              </div>
-
-              <div className="flex items-center space-x-2 mb-4">
-                <ShieldAlert className="w-5 h-5 text-amber-300 animate-bounce" />
-                <span className="font-display font-bold text-xs uppercase tracking-widest text-amber-200">
-                  Visitor Waiting At Gate! (ઓર્કીડ સેક્યુરીટી ગેટ)
-                </span>
-              </div>
-
-              {activePoll.map((visitor) => (
-                <div
-                  key={visitor.id}
-                  className="bg-slate-900/90 border border-white/20 p-5 rounded-2xl flex flex-col md:flex-row items-center gap-6 text-left"
-                >
-                  <div className="w-32 h-32 bg-slate-800 rounded-xl overflow-hidden border-2 border-white/40 shadow-inner shrink-0">
-                    <img src={visitor.photoUrl} alt={visitor.fullName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                  </div>
-
-                  <div className="flex-1 space-y-2 min-w-0">
-                    <div>
-                      <span className="font-mono bg-amber-500/35 border border-amber-400/30 text-amber-200 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
-                        {visitor.guestType}
-                      </span>
-                      <h3 className="font-display font-black text-xl text-white tracking-tight mt-1.5 uppercase truncate">
-                        {visitor.fullName}
-                      </h3>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-300 font-medium">
-                      <p><span className="text-slate-400">Phone:</span> {visitor.mobileNumber}</p>
-                      {visitor.email && <p><span className="text-slate-400">Email:</span> {visitor.email}</p>}
-                      <p className="col-span-1 sm:col-span-2"><span className="text-slate-400">Purpose:</span> {visitor.reason}</p>
-                    </div>
-
-                    <p className="text-[10px] text-slate-400 flex items-center">
-                      <Clock className="w-3.5 h-3.5 mr-1" />
-                      Awaiting your approval since {new Date(visitor.requestTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  </div>
-
-                  <div className="flex flex-col gap-3 w-full md:w-56 shrink-0 justify-center bg-slate-900/40 p-4 rounded-xl border border-white/5">
-                    {rejectingId === visitor.id ? (
-                      <div className="space-y-2 text-left w-full">
-                        <p className="text-[10px] text-red-300 font-bold uppercase tracking-wider">Provide rejection reason:</p>
-                        <input
-                          type="text"
-                          placeholder="e.g. Unknown person, wrong flat"
-                          value={rejectReasonText}
-                          onChange={(e) => setRejectReasonText(e.target.value)}
-                          className="w-full bg-slate-800 border border-slate-700 focus:border-red-400 text-white placeholder-slate-500 rounded-lg py-1.5 px-2.5 text-xs outline-none transition"
-                        />
-                        <div className="flex gap-2 w-full">
-                          <button
-                            onClick={() => handleRespond(visitor.id, 'rejected', rejectReasonText)}
-                            className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-1 rounded-lg text-[10px] flex items-center justify-center space-x-1 shadow transition cursor-pointer"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                            <span>Confirm</span>
-                          </button>
-                          <button
-                            onClick={() => {
-                              setRejectingId(null);
-                              setRejectReasonText('');
-                            }}
-                            className="bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold py-2 px-2.5 rounded-lg text-[10px] transition cursor-pointer"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => handleRespond(visitor.id, 'approved')}
-                          className="w-full bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center space-x-1.5 shadow-md cursor-pointer transition-all"
-                        >
-                          <Check className="w-4 h-4" />
-                          <span>Approve Entry</span>
-                        </button>
-                        <button
-                          onClick={() => setRejectingId(visitor.id)}
-                          className="w-full bg-red-500 hover:bg-red-600 active:bg-red-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center space-x-1.5 shadow-md cursor-pointer transition-all"
-                        >
-                          <X className="w-4 h-4" />
-                          <span>Reject / Decline</span>
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* GUEST HISTORY & REPORTS LOG */}
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 text-left">
-            <div className="flex items-center space-x-2.5 mb-4 border-b border-slate-100 pb-3 justify-between">
-              <div className="flex items-center space-x-2">
-                <ClipboardList className="w-5 h-5 text-indigo-600" />
-                <h3 className="font-display font-bold text-base text-slate-800">Guest History & Reports</h3>
-              </div>
-              <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-0.5 rounded-full">
-                {guestHistory.length} total entries
-              </span>
-            </div>
-
-            <p className="text-xs text-slate-500 mb-4 leading-relaxed">
-              Report log of all visitor attempts to your flat, with dates, times, visitor images, and whether entry was approved or declined.
-            </p>
-
-            {loadingHistory && guestHistory.length === 0 ? (
-              <div className="py-12 flex items-center justify-center">
-                <span className="inline-block border-2 border-indigo-600 border-t-transparent rounded-full w-5 h-5 animate-spin"></span>
-              </div>
-            ) : guestHistory.length === 0 ? (
-              <div className="flex flex-col items-center justify-center text-slate-400 py-12 border-2 border-dashed border-slate-100 rounded-xl">
-                <ClipboardList className="w-10 h-10 text-slate-200 mb-2" />
-                <p className="text-xs font-semibold text-slate-600">No Visitor Logs Available</p>
-                <p className="text-[10px] text-slate-400 mt-1">Logs populate as soon as visitors register at the security gate.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[480px] overflow-y-auto pr-1">
-                {guestHistory.map((log) => (
-                  <div
-                    key={log.id}
-                    className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-3 hover:border-slate-300 transition relative overflow-hidden flex flex-col justify-between"
-                  >
-                    <button
-                      onClick={() => handleDeleteHistoryRecord(log.id, log.fullName)}
-                      title="Delete visitor log"
-                      className="absolute top-3 right-3 text-slate-400 hover:text-red-500 hover:bg-slate-200/50 p-1 rounded-lg transition cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-
-                    <div className="space-y-3">
-                      <div className="flex items-center space-x-3 pr-6 text-left">
-                        <img src={log.photoUrl} alt={log.fullName} className="w-11 h-11 rounded-lg object-cover border bg-slate-200 shrink-0" referrerPolicy="no-referrer" />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-slate-800 truncate uppercase">{log.fullName}</span>
-                          </div>
-                          <p className="text-[10px] text-slate-500 mt-0.5 font-mono">{log.mobileNumber} • {log.guestType}</p>
-                        </div>
-                      </div>
-
-                      <div className="text-[11px] text-slate-600 bg-white border border-slate-200/40 p-2 rounded-lg leading-relaxed text-left">
-                        <p className="font-medium"><span className="text-slate-400 font-normal">Reason:</span> {log.reason}</p>
-                      </div>
-                    </div>
-
-                    <div className="text-[9px] text-slate-400 flex items-center justify-between border-t border-slate-100 pt-2.5 mt-2">
-                      <p className="flex items-center text-left">
-                        <Clock className="w-3.5 h-3.5 mr-1 shrink-0" />
-                        {new Date(log.requestTime).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} • {new Date(log.requestTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase font-mono ${
-                        log.status === 'approved'
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                          : log.status === 'expired'
-                          ? 'bg-slate-50 text-slate-500 border border-slate-200'
-                          : 'bg-red-50 text-red-700 border-red-100'
-                      }`}>
-                        {log.status}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* BENTO SETTINGS & PROFILE GRID */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            <div className="lg:col-span-7 space-y-6">
-              
-              {/* Household family members config */}
-              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 text-left">
-                <div className="flex items-center space-x-2.5 mb-4 border-b border-slate-100 pb-3">
-                  <Users className="w-5 h-5 text-indigo-600" />
-                  <h3 className="font-display font-bold text-base text-slate-800">Household Members</h3>
-                </div>
-
-                {settingsError && (
-                  <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-lg text-xs flex items-start space-x-1.5 mb-3">
-                    <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
-                    <span>{settingsError}</span>
-                  </div>
-                )}
-
-                {settingsSuccess && (
-                  <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 p-3 rounded-lg text-xs flex items-start space-x-1.5 mb-3">
-                    <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
-                    <span>{settingsSuccess}</span>
-                  </div>
-                )}
-
-                <p className="text-xs text-slate-500 mb-4 leading-relaxed">
-                  Add up to <span className="font-bold text-indigo-600">2 family members</span> who are part of your flat. 
-                  These members are authorized to access the system and receive notifications.
-                </p>
-
-                <div className="space-y-2.5 mb-5">
-                  {myOwnerData?.members && myOwnerData.members.length > 0 ? (
-                    myOwnerData.members.map((member, idx) => (
-                      <div key={idx} className="bg-slate-50 border border-slate-200 p-3 rounded-xl flex items-center justify-between">
-                        <div className="flex items-center space-x-2.5">
-                          <div className="bg-indigo-100 text-indigo-700 w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs">
-                            {idx + 1}
-                          </div>
-                          <span className="text-xs font-bold text-slate-800 uppercase">{member}</span>
-                        </div>
-                        <button
-                          onClick={() => handleRemoveMember(idx)}
-                          className="text-slate-400 hover:text-red-500 p-1 rounded-md transition cursor-pointer"
-                          title="Remove member"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-xs text-slate-400 p-4 border border-dashed border-slate-200 rounded-xl text-center">
-                      No other household members added yet. Add up to 2.
-                    </div>
-                  )}
-                </div>
-
-                {(!myOwnerData?.members || myOwnerData.members.length < 2) && (
-                  <form onSubmit={handleAddMember} className="flex gap-2">
-                    <input
-                      type="text"
-                      required
-                      placeholder="Enter family member's full name"
-                      value={newMember}
-                      onChange={(e) => setNewMember(e.target.value)}
-                      className="flex-1 bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl px-3.5 py-2 text-xs font-medium transition outline-none"
-                    />
-                    <button
-                      type="submit"
-                      disabled={savingSettings}
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-semibold flex items-center space-x-1 shadow transition shrink-0 cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Add</span>
-                    </button>
-                  </form>
-                )}
-              </div>
-
-              {/* Vehicle management config */}
-              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 text-left">
-                <div className="flex items-center space-x-2.5 mb-4 border-b border-slate-100 pb-3">
-                  <Car className="w-5 h-5 text-indigo-600" />
-                  <h3 className="font-display font-bold text-base text-slate-800">My Vehicles</h3>
-                </div>
-
-                <p className="text-xs text-slate-500 mb-4 leading-relaxed">
-                  Register your vehicles (two-wheelers or four-wheelers) so our security gate guards can instantly identify you and allow seamless entries.
-                </p>
-
-                <div className="space-y-2.5 mb-5">
-                  {myOwnerData?.vehicles && myOwnerData.vehicles.length > 0 ? (
-                    myOwnerData.vehicles.map((v) => (
-                      <div key={v.id} className="bg-slate-50 border border-slate-200/60 p-3 rounded-xl flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <span className="text-xl bg-white border p-1 rounded-lg shrink-0">
-                            {v.type === 'fourwheeler' ? '🚗' : '🏍️'}
-                          </span>
-                          <div>
-                            <p className="text-xs font-bold text-slate-800 capitalize leading-none">{v.brandModel}</p>
-                            <p className="text-[10px] text-slate-400 mt-1 uppercase font-mono">{v.type === 'fourwheeler' ? 'Car' : 'Bike / Scooter'}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <span className="font-mono font-bold bg-indigo-50 border border-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded text-[10px] uppercase">
-                            {v.plateNumber}
-                          </span>
-                          <button
-                            onClick={() => handleRemoveVehicle(v.id)}
-                            className="text-slate-400 hover:text-red-500 p-1.5 rounded-md transition cursor-pointer"
-                            title="Unregister vehicle"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-xs text-slate-400 p-4 border border-dashed border-slate-200 rounded-xl text-center">
-                      No vehicles registered for your flat yet.
-                    </div>
-                  )}
-                </div>
-
-                <form onSubmit={handleAddVehicle} className="space-y-3 bg-slate-50 p-4 border border-slate-200 rounded-xl">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Register New Vehicle</p>
-                  
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 mb-1">Vehicle Type</label>
-                      <select
-                        value={vType}
-                        onChange={(e) => setVType(e.target.value as 'twowheeler' | 'fourwheeler')}
-                        className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-medium outline-none"
-                      >
-                        <option value="fourwheeler">Four Wheeler (Car)</option>
-                        <option value="twowheeler">Two Wheeler (Bike)</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 mb-1">Plate Number</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="e.g. GJ-03-AB-1234"
-                        value={vPlate}
-                        onChange={(e) => setVPlate(e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-medium outline-none uppercase font-mono"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Brand & Model</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Honda Activa, Maruti Swift"
-                      value={vModel}
-                      onChange={(e) => setVModel(e.target.value)}
-                      className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-medium outline-none"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 rounded-lg text-xs shadow transition cursor-pointer"
-                  >
-                    Register Vehicle
-                  </button>
-                </form>
-              </div>
-            </div>
-
-            {/* Right column: Alternate contact & Password config */}
-            <div className="lg:col-span-5 space-y-6">
-              <form onSubmit={handleSaveGeneral} className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 text-left space-y-4">
-                <div className="flex items-center space-x-2.5 mb-2 border-b border-slate-100 pb-3">
-                  <Lock className="w-5 h-5 text-indigo-600" />
-                  <h3 className="font-display font-bold text-base text-slate-800">Security & Alternate Contact</h3>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase">Alternate Contact No.</label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                        <Phone className="w-3.5 h-3.5" />
-                      </div>
-                      <input
-                        type="tel"
-                        placeholder="Secondary phone"
-                        value={altContact}
-                        onChange={(e) => setAltContact(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl py-2.5 pl-9 pr-3.5 text-xs font-medium transition outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase">Update Password</label>
-                    <div className="relative">
-                      <input
-                        type={showPass ? 'text' : 'password'}
-                        placeholder="Enter new password"
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl py-2.5 pl-3.5 pr-9 text-xs font-medium transition outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPass(!showPass)}
-                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
-                      >
-                        {showPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={savingSettings}
-                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-xs transition cursor-pointer shadow"
-                >
-                  Save Details & Password
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Tab 2: Society Announcements Notice Board */}
-      {residentTab === 'notices' && (
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 text-left space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <div className="flex items-center space-x-2.5">
-              <Megaphone className="w-5 h-5 text-indigo-600 animate-pulse" />
-              <h3 className="font-display font-bold text-base text-slate-800">Society Notice Board</h3>
-            </div>
-            <span className="bg-indigo-50 border border-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
-              {announcements.length} Active Notice(s)
-            </span>
-          </div>
-
-          {announcements.length === 0 ? (
-            <div className="py-16 flex flex-col items-center justify-center text-slate-400 border border-dashed border-slate-150 rounded-xl">
-              <Megaphone className="w-10 h-10 text-slate-200 mb-2" />
-              <p className="text-xs font-semibold text-slate-500 font-display">All Quiet Here</p>
-              <p className="text-[10px] text-slate-400 mt-1">There are no active general announcements published at this time.</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {announcements.map((ann) => (
-                <div
-                  key={ann.id}
-                  className="p-5 border rounded-2xl bg-slate-50/50 hover:bg-slate-50 transition border-slate-200 text-left space-y-4 relative overflow-hidden shadow-sm"
-                >
-                  <span className="absolute top-4 right-4 text-[9px] font-bold bg-white text-slate-500 border border-slate-200 px-2 py-0.5 rounded-full uppercase font-mono">
-                    Target: {ann.target} {ann.target === 'wing' ? `(${ann.wing})` : ann.target === 'flat' ? `(${ann.wing}-${ann.flatNo})` : ''}
-                  </span>
-
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold text-slate-400 font-mono tracking-wider">ANNOUNCEMENT</p>
-                    <p className="text-sm font-medium text-slate-800 leading-relaxed whitespace-pre-line">
-                      {ann.text}
-                    </p>
-                  </div>
-
-                  {ann.imageUrl && (
-                    <div className="rounded-xl overflow-hidden max-h-[300px] border border-slate-200 shadow-sm">
-                      <img
-                        src={ann.imageUrl}
-                        alt="Notice media"
-                        className="w-full h-full object-cover bg-slate-100"
-                        referrerPolicy="no-referrer"
-                        onError={(e) => {
-                          (e.currentTarget as HTMLElement).style.display = 'none';
-                        }}
-                      />
-                    </div>
-                  )}
-
-                  {ann.videoUrl && (
-                    <div className="rounded-xl overflow-hidden max-h-[350px] border border-slate-200 bg-slate-900 shadow-sm">
-                      <video
-                        src={ann.videoUrl}
-                        controls
-                        className="w-full max-h-[350px] object-contain"
-                        onError={(e) => {
-                          (e.currentTarget as HTMLElement).style.display = 'none';
-                        }}
-                      />
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between text-[10px] text-slate-400 border-t border-slate-200/50 pt-3 font-mono">
-                    <span>Published By: <strong className="text-slate-600 font-semibold">{ann.sender}</strong></span>
-                    <span>
-                      {new Date(ann.timestamp).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} • {new Date(ann.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Tab 3: Complaints & Resolution Board */}
-      {residentTab === 'complaints' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          
-          <div className="lg:col-span-5 bg-white border border-slate-200 rounded-2xl shadow-sm p-6 text-left">
-            <div className="flex items-center space-x-2.5 mb-4 border-b border-slate-100 pb-3 text-indigo-600">
-              <Wrench className="w-5 h-5" />
-              <h3 className="font-display font-bold text-base text-slate-800">Raise a Complaint</h3>
-            </div>
-
-            {compError && (
-              <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-lg text-xs mb-3">
-                {compError}
-              </div>
-            )}
-
-            {compSuccess && (
-              <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 p-3 rounded-lg text-xs mb-3">
-                {compSuccess}
-              </div>
-            )}
-
-            <form onSubmit={handleCreateComplaint} className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase">Complaint Title</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Lift A2 fan not working"
-                  value={compTitle}
-                  onChange={(e) => setCompTitle(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl p-3 text-xs font-medium transition outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase">Detailed Description</label>
-                <textarea
-                  required
-                  rows={4}
-                  placeholder="Explain the problem in detail (wing, floor, details) so our society technicians can fix it immediately..."
-                  value={compDesc}
-                  onChange={(e) => setCompDesc(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl p-3 text-xs font-medium transition outline-none resize-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase">
-                  Attach Photo, Video or PDF Document
-                </label>
-                <div
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setIsDragging(true);
-                  }}
-                  onDragLeave={() => setIsDragging(false)}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setIsDragging(false);
-                    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                      handleFileChange(e.dataTransfer.files[0]);
-                    }
-                  }}
-                  className={`border-2 border-dashed rounded-xl p-5 text-center transition-all duration-150 flex flex-col items-center justify-center cursor-pointer ${
-                    isDragging
-                      ? 'border-indigo-600 bg-indigo-50/50'
-                      : compMedia
-                      ? 'border-emerald-300 bg-emerald-50/10'
-                      : 'border-slate-200 bg-slate-50 hover:bg-slate-50/80 hover:border-slate-300'
-                  }`}
-                  onClick={() => document.getElementById('complaint-file-input')?.click()}
-                >
-                  <input
-                    id="complaint-file-input"
-                    type="file"
-                    accept="image/*,video/*,application/pdf"
-                    className="hidden"
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files[0]) {
-                        handleFileChange(e.target.files[0]);
-                      }
-                    }}
-                  />
-                  
-                  {compMedia ? (
-                    <div className="space-y-2 w-full">
-                      <div className="flex items-center justify-between bg-white border border-slate-150 p-2 rounded-lg text-xs">
-                        <div className="flex items-center space-x-2 truncate">
-                          {compMediaType?.startsWith('image/') ? (
-                            <img src={compMedia} className="w-10 h-10 object-cover rounded-md border border-slate-100" />
-                          ) : (
-                            <FileText className="w-8 h-8 text-red-500 shrink-0" />
-                          )}
-                          <div className="text-left truncate">
-                            <p className="font-bold text-slate-700 truncate max-w-[150px]">{compMediaName || 'uploaded_file'}</p>
-                            <p className="text-[9px] text-slate-400 uppercase font-mono">{compMediaType || 'file'}</p>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setCompMedia('');
-                            setCompMediaName('');
-                            setCompMediaType('');
-                          }}
-                          className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg border border-red-100 font-bold text-[10px]"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-1.5 py-2">
-                      <div className="mx-auto w-8 h-8 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-full flex items-center justify-center">
-                        <Upload className="w-4 h-4" />
-                      </div>
-                      <p className="text-xs font-bold text-slate-700">Drag & Drop or click to upload</p>
-                      <p className="text-[9px] text-slate-400">Supports PNG, JPG, JPEG, PDF or Videos up to 8MB</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-xs shadow transition cursor-pointer"
-              >
-                File Public Complaint
-              </button>
-            </form>
-          </div>
-
-          <div className="lg:col-span-7 bg-white border border-slate-200 rounded-2xl shadow-sm p-6 text-left space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center space-x-2.5">
-                <ClipboardList className="w-5 h-5 text-indigo-600" />
-                <h3 className="font-display font-bold text-base text-slate-800">Complaints Resolution Board</h3>
-              </div>
-              <span className="bg-indigo-50 border border-indigo-100 text-indigo-700 text-[10px] font-bold px-2.5 py-0.5 rounded-full font-mono">
-                {complaints.length} Filed
-              </span>
-            </div>
-
-            <p className="text-xs text-slate-500 leading-relaxed">
-              This board is transparently visible to all residents. The Admin/Secretary Rahul Popat updates statuses in real-time as tickets are dispatched.
-            </p>
-
-            {loadingComplaints && complaints.length === 0 ? (
-              <div className="py-16 flex items-center justify-center">
-                <span className="inline-block border-4 border-indigo-600 border-t-transparent rounded-full w-8 h-8 animate-spin"></span>
-              </div>
-            ) : complaints.length === 0 ? (
-              <div className="py-16 text-center border border-dashed border-slate-200 rounded-xl text-slate-400">
-                <CheckCircle className="w-10 h-10 text-emerald-500/20 mx-auto mb-2" />
-                <p className="text-xs font-semibold text-slate-600">Zero Pending Complaints!</p>
-                <p className="text-[10px] text-slate-400 mt-0.5">Everything at Orchid Heights is running smoothly.</p>
-              </div>
-            ) : (
-              <div className="space-y-4 max-h-[580px] overflow-y-auto pr-1">
-                {complaints.map((comp) => (
-                  <div key={comp.id} className="p-4 border border-slate-200 rounded-2xl bg-slate-50/40 hover:bg-slate-50 transition space-y-3 relative overflow-hidden">
-                    <div className="flex justify-between items-start gap-3">
-                      <div>
-                        <span className="bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold px-2 py-0.5 rounded uppercase">
-                          Flat {comp.flatId}
-                        </span>
-                        <h4 className="font-bold text-xs text-slate-800 mt-1 uppercase">{comp.title}</h4>
-                      </div>
-                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase font-mono border ${
-                        comp.status === 'open'
-                          ? 'bg-amber-50 text-amber-700 border-amber-200'
-                          : comp.status === 'in-progress'
-                          ? 'bg-sky-50 text-sky-700 border-sky-200'
-                          : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      }`}>
-                        {comp.status}
-                      </span>
-                    </div>
-
-                    <p className="text-xs text-slate-600 leading-relaxed pr-6">
-                      {comp.description}
-                    </p>
-
-                    {comp.mediaUrl && (
-                      <div>
-                        {comp.mediaType === 'application/pdf' || comp.mediaUrl.startsWith('data:application/pdf') || comp.mediaName?.endsWith('.pdf') ? (
-                          <div className="bg-slate-50 hover:bg-slate-100 transition border border-slate-200 rounded-xl p-3 flex items-center justify-between">
-                            <div className="flex items-center space-x-2 truncate">
-                              <FileText className="w-5 h-5 text-red-500 shrink-0" />
-                              <div className="text-left truncate">
-                                <p className="text-xs font-bold text-slate-700 truncate max-w-[150px]">
-                                  {comp.mediaName || 'Attached_Complaint_Document.pdf'}
-                                </p>
-                                <p className="text-[9px] font-mono text-slate-400">PDF Document</p>
-                              </div>
-                            </div>
-                            <a
-                              href={comp.mediaUrl}
-                              download={comp.mediaName || 'complaint_document.pdf'}
-                              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1 px-2.5 rounded-lg text-[9px] flex items-center space-x-1 shadow cursor-pointer transition shrink-0"
-                            >
-                              <Download className="w-3 h-3" />
-                              <span>Download PDF</span>
-                            </a>
-                          </div>
-                        ) : comp.mediaType?.startsWith('image/') || comp.mediaUrl.startsWith('data:image/') || comp.mediaName?.match(/\.(png|jpg|jpeg|gif)$/i) ? (
-                          <div className="rounded-xl overflow-hidden max-h-48 border border-slate-200 shadow-inner relative group bg-slate-50">
-                            <img src={comp.mediaUrl} alt="Complaint Attachment" className="w-full h-full object-cover" referrerPolicy="no-referrer" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
-                              <a href={comp.mediaUrl} download={comp.mediaName || 'complaint_attachment.png'} className="bg-white/95 text-slate-800 font-bold px-3 py-1.5 rounded-lg text-[10px] flex items-center space-x-1 shadow hover:bg-white transition">
-                                <Download className="w-3.5 h-3.5" />
-                                <span>Save Image</span>
-                              </a>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="bg-slate-50 hover:bg-slate-100 transition border border-slate-200 rounded-xl p-3 flex items-center justify-between">
-                            <div className="flex items-center space-x-2 truncate">
-                              <FileText className="w-5 h-5 text-indigo-500 shrink-0" />
-                              <div className="text-left truncate">
-                                <p className="text-xs font-bold text-slate-700 truncate max-w-[150px]">
-                                  {comp.mediaName || 'Attachment_File'}
-                                </p>
-                                <p className="text-[9px] font-mono text-slate-400">{comp.mediaType || 'Document/Attachment'}</p>
-                              </div>
-                            </div>
-                            <a
-                              href={comp.mediaUrl}
-                              download={comp.mediaName || 'complaint_attachment'}
-                              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1 px-2.5 rounded-lg text-[9px] flex items-center space-x-1 shadow cursor-pointer transition shrink-0"
-                            >
-                              <Download className="w-3 h-3" />
-                              <span>Download</span>
-                            </a>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {comp.processNotes && (
-                      <div className="bg-slate-50 border border-slate-150 p-2.5 rounded-xl text-[10px] text-slate-700 leading-snug space-y-1">
-                        <p className="font-bold text-[9px] text-slate-400 uppercase tracking-wider font-mono">Process Updates & Review Notes:</p>
-                        <p className="font-medium whitespace-pre-line text-slate-600">{comp.processNotes}</p>
-                      </div>
-                    )}
-
-                    {comp.status === 'resolved' ? (
-                      <div className="bg-emerald-50/50 border border-emerald-100 p-2.5 rounded-xl text-[10px] text-emerald-800 leading-tight space-y-0.5">
-                        <p className="font-bold flex items-center">
-                          <Check className="w-3.5 h-3.5 mr-1" />
-                          Resolved successfully
-                        </p>
-                        <p className="font-medium text-emerald-600">
-                          Action taken by: {comp.resolvedBy || 'Secretary'} on {new Date(comp.resolvedAt).toLocaleDateString('en-IN')}
-                        </p>
-                      </div>
-                    ) : (
-                      <p className="text-[9px] text-slate-400 font-mono">
-                        Filed: {new Date(comp.createdAt).toLocaleDateString('en-IN')} • {new Date(comp.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Tab 4: Financial ledger / Balance sheets */}
-      {residentTab === 'financials' && (
-        <div className="space-y-6 text-left">
-          
-          <div className="bg-gradient-to-r from-slate-900 to-indigo-950 p-6 rounded-2xl text-white border border-slate-800 shadow-md flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="space-y-1">
-              <span className="font-mono bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">
-                Maintenance Account Ledger
-              </span>
-              <h3 className="font-display font-black text-lg tracking-tight uppercase">Flat {wing}-{flatNo} Status</h3>
-              <p className="text-xs text-slate-400">Your maintenance fees are cleared up to date. Next quarterly invoice is generated automatically.</p>
-            </div>
-            
-            <div className="flex gap-4 shrink-0 bg-slate-900/60 p-4 rounded-xl border border-white/5 items-center">
-              <div className="text-right">
-                <p className="text-[9px] font-mono text-slate-500 uppercase font-bold">Maintenance Status</p>
-                <p className="text-xs font-black text-emerald-400 uppercase tracking-wider mt-0.5">Fully Paid (ખેંચાયેલ છે)</p>
-              </div>
-              <div className="bg-emerald-500/10 text-emerald-400 p-2 rounded-lg border border-emerald-500/20">
-                <Check className="w-5 h-5" />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center space-x-2.5">
-                <FileText className="w-5 h-5 text-indigo-600" />
-                <h3 className="font-display font-bold text-base text-slate-800">Quarterly Balance Sheets & Ledgers</h3>
-              </div>
-              <span className="bg-indigo-50 border border-indigo-100 text-indigo-700 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
-                {financials.length} Published Reports
-              </span>
-            </div>
-
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Orchid Heights Society operates with absolute financial transparency. View quarterly balance sheets, society ledger entries, and maintenance expenses uploaded by Secretary Rahul Popat.
-            </p>
-
-            {loadingFinancials && financials.length === 0 ? (
-              <div className="py-16 flex items-center justify-center">
-                <span className="inline-block border-4 border-indigo-600 border-t-transparent rounded-full w-8 h-8 animate-spin"></span>
-              </div>
-            ) : financials.length === 0 ? (
-              <div className="py-16 text-center border border-dashed border-slate-150 rounded-xl text-slate-400">
-                <FileText className="w-10 h-10 text-slate-200 mx-auto mb-2" />
-                <p className="text-xs font-semibold text-slate-600">No Financial Ledgers Released</p>
-                <p className="text-[10px] text-slate-400 mt-1">The Secretary has not uploaded the quarterly audits yet.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {financials.map((fin) => (
-                  <div key={fin.id} className="p-4 border border-slate-200 rounded-2xl bg-slate-50/30 hover:bg-slate-50 transition flex flex-col justify-between shadow-sm relative overflow-hidden animate-fadeIn">
-                    <span className="absolute top-4 right-4 bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold px-2 py-0.5 rounded uppercase">
-                      {fin.month} {fin.year}
-                    </span>
-
-                    <div className="space-y-2 text-left mb-4">
-                      <div className="flex items-center space-x-2">
-                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded font-mono uppercase ${
-                          fin.reportType === 'welfare' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
-                          fin.reportType === 'statement' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
-                          fin.reportType === 'other' ? 'bg-purple-100 text-purple-800 border border-purple-200' :
-                          'bg-indigo-100 text-indigo-800 border border-indigo-200'
-                        }`}>
-                          {fin.reportType === 'welfare' ? 'Welfare Fund' :
-                           fin.reportType === 'statement' ? 'Financial Statement' :
-                           fin.reportType === 'other' ? 'General Record' :
-                           'Expense Ledger'}
-                        </span>
-                        
-                        {fin.fileType && (
-                          <span className="text-[8px] text-slate-400 font-mono tracking-wider font-bold uppercase">
-                            {fin.fileType.split('/').pop()?.toUpperCase() || 'FILE'}
-                          </span>
-                        )}
-                      </div>
-                      <h4 className="font-bold text-xs text-slate-800 uppercase mt-1.5">{fin.title}</h4>
-                      <p className="text-xs text-slate-500 leading-relaxed whitespace-pre-line line-clamp-3">
-                        {fin.description}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center justify-between border-t border-slate-100 pt-3.5 mt-2 bg-slate-50/50 -mx-4 -mb-4 p-4 rounded-b-2xl">
-                      <div className="text-left">
-                        <p className="text-[8px] font-mono text-slate-400 uppercase font-bold">Total Ledger Outlay</p>
-                        <p className="text-xs font-black text-slate-700 font-mono mt-0.5">₹{fin.totalExpense.toLocaleString('en-IN')}</p>
-                      </div>
-
-                      {fin.pdfUrl ? (
-                        <a
-                          href={fin.pdfUrl}
-                          download={fin.fileName || `${fin.title}.pdf`}
-                          className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1.5 px-3 rounded-lg text-[10px] flex items-center space-x-1.5 shadow transition cursor-pointer"
-                        >
-                          <Download className="w-3.5 h-3.5 animate-bounce" />
-                          <span>Download Statement</span>
-                        </a>
-                      ) : (
-                        <span className="text-[10px] text-slate-400 italic font-medium">No document attached</span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Tab 5: Essential Emergency Contacts Directory */}
-      {residentTab === 'contacts' && (
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 text-left space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-3">
-            <div className="flex items-center space-x-2.5">
-              <Phone className="w-5 h-5 text-indigo-600 animate-pulse" />
-              <h3 className="font-display font-bold text-base text-slate-800">Essential Society Contacts</h3>
-            </div>
-
-            <div className="flex flex-wrap gap-1.5">
-              {['all', 'Plumber', 'Electrician', 'Security', 'Manager', 'Gardener', 'Other'].map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setContactCategoryFilter(cat)}
-                  className={`px-3 py-1 rounded-full text-[10px] font-semibold transition cursor-pointer border ${
-                    contactCategoryFilter === cat
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                  }`}
-                >
-                  {cat === 'all' ? 'Show All' : cat}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <p className="text-xs text-slate-500 leading-relaxed">
-            Quickly call electricians, plumbers, gatekeepers, and office administrative managers of Orchid Heights. Tap the dial button to call directly from your device.
-          </p>
-
-          {loadingContacts && contacts.length === 0 ? (
-            <div className="py-16 flex items-center justify-center">
-              <span className="inline-block border-4 border-indigo-600 border-t-transparent rounded-full w-8 h-8 animate-spin"></span>
-            </div>
-          ) : contacts.length === 0 ? (
-            <div className="py-16 text-center text-slate-400">
-              <Phone className="w-10 h-10 text-slate-200 mx-auto mb-2" />
-              <p className="text-xs font-semibold">No contacts registered.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {contacts
-                .filter((c) => contactCategoryFilter === 'all' || c.category === contactCategoryFilter)
-                .map((contact) => (
-                  <div key={contact.id} className="p-4 border border-slate-200 rounded-2xl bg-slate-50/50 hover:bg-slate-50 transition flex items-center justify-between shadow-sm relative overflow-hidden">
-                    <div className="space-y-1.5 text-left pr-3">
-                      <span className="bg-indigo-100 text-indigo-800 text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider font-mono">
-                        {contact.category}
-                      </span>
-                      <h4 className="font-bold text-xs text-slate-800 uppercase block">{contact.name}</h4>
-                      <p className="text-[10px] font-mono font-medium text-slate-400">{contact.phone}</p>
-                    </div>
-
-                    <a
-                      href={`tel:${contact.phone}`}
-                      className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white p-3 rounded-full shadow transition-all duration-150 flex items-center justify-center cursor-pointer shrink-0"
-                      title={`Call ${contact.name}`}
-                    >
-                      <Phone className="w-4 h-4" />
-                    </a>
-                  </div>
-                ))}
-            </div>
-          )}
-        </div>
-      )}
 
     </div>
   );
