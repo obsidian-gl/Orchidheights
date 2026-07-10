@@ -56,7 +56,7 @@ export default function Navbar({ session, onLogout, activeTab, setActiveTab }: N
             </div>
           </div>
 
-          {/* Navigation Links for Deskop */}
+          {/* Navigation Links for Desktop */}
           <div className="hidden md:flex items-center space-x-1">
             {session.role === 'security' && (
               <button
@@ -70,30 +70,6 @@ export default function Navbar({ session, onLogout, activeTab, setActiveTab }: N
                 Gate Entry
               </button>
             )}
-
-            {(session.role === 'owner' || session.role === 'admin') && (
-              <button
-                onClick={() => setActiveTab('resident')}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
-                  activeTab === 'resident'
-                    ? 'bg-slate-100 text-slate-900'
-                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-                }`}
-              >
-                My Flat Portal
-              </button>
-            )}
-
-            <button
-              onClick={() => setActiveTab('directory')}
-              className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
-                activeTab === 'directory'
-                  ? 'bg-slate-100 text-slate-900'
-                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-              }`}
-            >
-              Building Directory
-            </button>
           </div>
 
           {/* Right Action Widgets */}
@@ -131,8 +107,8 @@ export default function Navbar({ session, onLogout, activeTab, setActiveTab }: N
         </div>
 
         {/* Mobile Navigation Bar */}
-        <div className="flex md:hidden border-t border-slate-100 py-2 justify-around">
-          {session.role === 'security' && (
+        {session.role === 'security' && (
+          <div className="flex md:hidden border-t border-slate-100 py-2 justify-around">
             <button
               onClick={() => setActiveTab('security')}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
@@ -141,28 +117,8 @@ export default function Navbar({ session, onLogout, activeTab, setActiveTab }: N
             >
               Gate Entry
             </button>
-          )}
-
-          {(session.role === 'owner' || session.role === 'admin') && (
-            <button
-              onClick={() => setActiveTab('resident')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                activeTab === 'resident' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500'
-              }`}
-            >
-              My Flat
-            </button>
-          )}
-
-          <button
-            onClick={() => setActiveTab('directory')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-              activeTab === 'directory' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500'
-            }`}
-          >
-            Directory
-          </button>
-        </div>
+          </div>
+        )}
       </div>
     </header>
   );

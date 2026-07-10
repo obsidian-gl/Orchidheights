@@ -11,6 +11,7 @@ interface HelpDeskSectionProps {
   loadingFinancials: boolean;
   onRefreshComplaints: () => void;
   announcements: any[];
+  viewMode?: 'complaints' | 'helpdesk';
 
   // Form states
   compTitle: string;
@@ -39,6 +40,7 @@ export default function HelpDeskSection({
   loadingFinancials,
   onRefreshComplaints,
   announcements,
+  viewMode,
   compTitle,
   setCompTitle,
   compDesc,
@@ -55,7 +57,9 @@ export default function HelpDeskSection({
   setCompError,
   handleFileChange
 }: HelpDeskSectionProps) {
-  const [activeSub, setActiveSub] = useState<'notices' | 'complaints' | 'financials'>('notices');
+  const [activeSub, setActiveSub] = useState<'notices' | 'complaints' | 'financials'>(
+    viewMode === 'complaints' ? 'complaints' : 'notices'
+  );
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [isDragging, setIsDragging] = useState<boolean>(false);
 
@@ -119,29 +123,33 @@ export default function HelpDeskSection({
     <div className="space-y-6 text-left">
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
         {/* Tab Selection */}
-        <div className="flex flex-col sm:flex-row gap-2 bg-slate-50 p-1.5 rounded-xl mb-6">
-          <button
-            onClick={() => setActiveSub('notices')}
-            className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-2 cursor-pointer ${activeSub === 'notices' ? 'bg-white text-indigo-600 shadow-sm border border-slate-150' : 'text-slate-500 hover:bg-slate-100'}`}
-          >
-            <Megaphone className="w-4 h-4" />
-            <span>Society Notices</span>
-          </button>
-          <button
-            onClick={() => setActiveSub('complaints')}
-            className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-2 cursor-pointer ${activeSub === 'complaints' ? 'bg-white text-indigo-600 shadow-sm border border-slate-150' : 'text-slate-500 hover:bg-slate-100'}`}
-          >
-            <MessageSquare className="w-4 h-4" />
-            <span>Resolution Board (Tickets)</span>
-          </button>
-          <button
-            onClick={() => setActiveSub('financials')}
-            className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-2 cursor-pointer ${activeSub === 'financials' ? 'bg-white text-indigo-600 shadow-sm border border-slate-150' : 'text-slate-500 hover:bg-slate-100'}`}
-          >
-            <FileText className="w-4 h-4" />
-            <span>Financial Ledger</span>
-          </button>
-        </div>
+        {viewMode !== 'complaints' && (
+          <div className="flex flex-col sm:flex-row gap-2 bg-slate-50 p-1.5 rounded-xl mb-6">
+            <button
+              onClick={() => setActiveSub('notices')}
+              className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-2 cursor-pointer ${activeSub === 'notices' ? 'bg-white text-indigo-600 shadow-sm border border-slate-150' : 'text-slate-500 hover:bg-slate-100'}`}
+            >
+              <Megaphone className="w-4 h-4" />
+              <span>Society Notices</span>
+            </button>
+            {viewMode !== 'helpdesk' && (
+              <button
+                onClick={() => setActiveSub('complaints')}
+                className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-2 cursor-pointer ${activeSub === 'complaints' ? 'bg-white text-indigo-600 shadow-sm border border-slate-150' : 'text-slate-500 hover:bg-slate-100'}`}
+              >
+                <MessageSquare className="w-4 h-4" />
+                <span>Resolution Board (Tickets)</span>
+              </button>
+            )}
+            <button
+              onClick={() => setActiveSub('financials')}
+              className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-2 cursor-pointer ${activeSub === 'financials' ? 'bg-white text-indigo-600 shadow-sm border border-slate-150' : 'text-slate-500 hover:bg-slate-100'}`}
+            >
+              <FileText className="w-4 h-4" />
+              <span>Financial Ledger</span>
+            </button>
+          </div>
+        )}
 
         {/* --- SubTab: Society Notices --- */}
         {activeSub === 'notices' && (

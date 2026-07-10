@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Bell, ShieldAlert, Check, X, Users, Car, Phone, Lock, Eye, EyeOff, ClipboardList, AlertCircle, Trash2, Plus, Clock, RefreshCw, Megaphone, FileText, Download, Search, Wrench, CheckCircle, Upload, Calendar, Home, User, Dumbbell, Film, Sparkles, BookOpen, MapPin, CheckSquare, PlusCircle } from 'lucide-react';
+import { Bell, ShieldAlert, Check, X, Users, Car, Phone, Lock, Eye, EyeOff, ClipboardList, AlertCircle, Trash2, Plus, Clock, RefreshCw, Megaphone, FileText, Download, Search, Wrench, CheckCircle, Upload, Calendar, Home, User, Dumbbell, Film, Sparkles, BookOpen, MapPin, CheckSquare, PlusCircle, ChevronRight, ArrowLeft } from 'lucide-react';
 import { FlatOwner, Visitor, Vehicle, UserSession, Announcement, AmenityBooking, GymTheatreLog, DailyHelper, AbsenceLog } from '../types';
 import { api, detectServerEnvironment } from '../lib/api';
 import { collection, doc, setDoc, addDoc, getDocs, onSnapshot, updateDoc, deleteDoc, query, where, orderBy } from 'firebase/firestore';
@@ -898,58 +898,72 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
     }
   };
 
+  const fullName = myOwnerData?.nameEn || 'RAHUL JASHVANTRAI POPAT';
+  const firstName = fullName.split(' ')[0] || 'Rahul';
+  const nameGu = myOwnerData?.nameGu || 'રાહુલ જશવંતરાય પોપટ';
+  const flatStr = `Flat ${wing}-${flatNo}`;
+
   return (
     <div className="space-y-6 text-slate-800 pb-24 text-left">
       
-      {/* Top Header Panel */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
-        <div className="flex items-center space-x-3.5 text-left w-full sm:w-auto">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-150 text-indigo-600 font-display font-black text-lg flex items-center justify-center uppercase select-none shadow-sm">
-            {myOwnerData?.nameEn?.substring(0, 2) || 'OH'}
-          </div>
-          <div>
-            <div className="flex items-center space-x-1.5">
-              <span className="font-display font-bold text-sm text-slate-800">Hi, {myOwnerData?.nameEn || 'Resident'}!</span>
-              <span className="bg-indigo-100 text-indigo-700 font-mono text-[8px] font-black px-1.5 py-0.5 rounded uppercase">Flat {wing}-{flatNo}</span>
+      {/* Top Header Panel matching the reference image */}
+      {activeSubSection === null && (
+        <div className="p-4 pt-6 pb-2 text-left space-y-4">
+          <div className="flex items-center justify-between w-full">
+            <div className="w-12 h-12 rounded-full overflow-hidden border border-slate-200 shadow-sm bg-slate-100 flex items-center justify-center shrink-0">
+              <img
+                src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&h=120&fit=crop"
+                alt="Profile"
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+              />
             </div>
-            <p className="text-[10px] text-slate-400 font-medium">Orchid Heights Owners Association • (ઓર્કીડ સોસાયટી)</p>
+            <div className="flex items-center gap-2.5">
+              {/* SOS Button */}
+              <button
+                onClick={() => {
+                  if (confirm("🚨 EMERGENCY SOS BROADCAST: Trigger society-wide emergency assistance alarm to security guards?")) {
+                    playHighFrequencyAlarm();
+                    alert("🔴 High Frequency SOS Alarm has been triggered. Please contact society guard station at +91 99999-00000 immediately.");
+                  }
+                }}
+                className="w-10 h-10 rounded-full bg-[#1E1B4B] hover:bg-[#312E81] text-white text-[10px] font-black tracking-wider flex items-center justify-center shadow-md transition transform active:scale-95 cursor-pointer"
+                title="Emergency SOS Alarm"
+              >
+                SOS
+              </button>
+              {/* Notification bell with badge */}
+              <div className="relative p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full transition cursor-pointer">
+                <Bell className="w-4 h-4" />
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#7C3AED] text-white text-[8px] font-extrabold rounded-full flex items-center justify-center shadow">
+                  {activePoll.length > 0 ? activePoll.length : '2'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-0.5">
+            <h2 className="font-display font-black text-2xl text-slate-800 tracking-tight leading-none">
+              Hi {firstName}
+            </h2>
+            <div className="pt-1.5 space-y-0.5">
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">{flatStr} Resident Owner</p>
+              <p className="text-sm font-black text-slate-700 uppercase leading-none">{fullName}</p>
+              {nameGu && (
+                <p className="text-xs font-semibold text-slate-400 font-sans">{nameGu}</p>
+              )}
+            </div>
           </div>
         </div>
-
-        <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
-          {/* Refresh button */}
-          <button
-            onClick={handleManualRefresh}
-            disabled={isRefreshing}
-            title="Refresh database"
-            className="p-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-500 hover:text-slate-700 rounded-xl transition cursor-pointer"
-          >
-            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-          </button>
-
-          {/* SOS Alert trigger button */}
-          <button
-            onClick={() => {
-              if (confirm("🚨 EMERGENCY SOS BROADCAST: Trigger society-wide emergency assistance alarm to security guards?")) {
-                playHighFrequencyAlarm();
-                alert("🔴 High Frequency SOS Alarm has been triggered. Please contact society guard station at +91 99999-00000 immediately.");
-              }
-            }}
-            className="bg-red-600 hover:bg-red-700 text-white font-extrabold uppercase px-4 py-2.5 rounded-xl text-[10px] flex items-center space-x-1.5 shadow-md cursor-pointer transition-all transform active:scale-95"
-          >
-            <ShieldAlert className="w-4 h-4 animate-pulse" />
-            <span>Emergency SOS</span>
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* --- Main Routing --- */}
       {activeMainTab === 'community' ? (
         activeSubSection === null ? (
-          /* 6-Tile Bento Grid Dashboard */
+          /* 6-Tile Bento Grid Dashboard matching the reference image layout */
           <div className="space-y-6">
             
-            {/* Active visitor alarm ringing banner at top level */}
+            {/* Active visitor alarm ringing banner */}
             {isAlarmActive && (
               <div className="bg-red-600 text-white p-4 rounded-2xl flex items-center justify-between animate-pulse shadow-md">
                 <p className="text-xs font-bold">🚨 ACTIVE VISITOR AWAITING ENTRY APPROVAL!</p>
@@ -975,143 +989,132 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Grid of exactly 6 blocks formatted in mobile-friendly 2 columns */}
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 gap-4">
               
-              {/* Card 1: Visitors */}
+              {/* Block 1: Gate Visitors */}
               <div
                 onClick={() => setActiveSubSection('visitors')}
-                className="bg-white border border-slate-200 hover:border-indigo-400 p-6 rounded-3xl shadow-sm hover:shadow-md cursor-pointer transition duration-150 flex flex-col justify-between space-y-4 group text-left relative overflow-hidden"
+                className="bg-white rounded-3xl p-5 border border-slate-200/60 shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group"
               >
-                <div className="space-y-3">
-                  <div className="w-10 h-10 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center shadow-sm">
+                <div className="flex items-center justify-between w-full">
+                  <div className="w-11 h-11 rounded-full bg-[#7C3AED] text-white flex items-center justify-center shrink-0 shadow-sm">
                     <Users className="w-5 h-5" />
                   </div>
-                  <div>
-                    <h4 className="font-display font-extrabold text-sm text-slate-800 uppercase tracking-tight group-hover:text-indigo-600 transition">
-                      Gate Visitors
-                    </h4>
-                    <p className="text-[10px] text-slate-400 font-medium leading-relaxed mt-0.5">
-                      Verify waiting entries, download 3-month logs, and review guest approvals.
-                    </p>
-                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />
                 </div>
-                <div className="text-[10px] text-indigo-600 font-bold flex items-center">
-                  <span>Enter visitors deck →</span>
+                <div className="mt-4">
+                  <h4 className="font-display font-black text-slate-800 text-sm tracking-tight leading-snug">
+                    Gate Visitors
+                  </h4>
+                  <p className="text-[10px] text-slate-400 font-medium leading-normal mt-1">
+                    Manage Guest Entries
+                  </p>
                 </div>
               </div>
 
-              {/* Card 2: Resident Directory */}
+              {/* Block 2: Complaint Box (formerly Notice Board) */}
+              <div
+                onClick={() => setActiveSubSection('complaints')}
+                className="bg-white rounded-3xl p-5 border border-slate-200/60 shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group"
+              >
+                <div className="flex items-center justify-between w-full">
+                  <div className="w-11 h-11 rounded-full bg-[#EC4899] text-white flex items-center justify-center shrink-0 shadow-sm">
+                    <ClipboardList className="w-5 h-5" />
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />
+                </div>
+                <div className="mt-4">
+                  <h4 className="font-display font-black text-slate-800 text-sm tracking-tight leading-snug">
+                    Complaint Box
+                  </h4>
+                  <p className="text-[10px] text-slate-400 font-medium leading-normal mt-1">
+                    Raise & Resolve Issues
+                  </p>
+                </div>
+              </div>
+
+              {/* Block 3: Resident Directory */}
               <div
                 onClick={() => setActiveSubSection('directory')}
-                className="bg-white border border-slate-200 hover:border-indigo-400 p-6 rounded-3xl shadow-sm hover:shadow-md cursor-pointer transition duration-150 flex flex-col justify-between space-y-4 group text-left relative overflow-hidden"
+                className="bg-white rounded-3xl p-5 border border-slate-200/60 shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group"
               >
-                <div className="space-y-3">
-                  <div className="w-10 h-10 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center shadow-sm">
+                <div className="flex items-center justify-between w-full">
+                  <div className="w-11 h-11 rounded-full bg-[#2563EB] text-white flex items-center justify-center shrink-0 shadow-sm">
                     <BookOpen className="w-5 h-5" />
                   </div>
-                  <div>
-                    <h4 className="font-display font-extrabold text-sm text-slate-800 uppercase tracking-tight group-hover:text-indigo-600 transition">
-                      Resident Directory
-                    </h4>
-                    <p className="text-[10px] text-slate-400 font-medium leading-relaxed mt-0.5">
-                      All neighbours, family members, alternative numbers, and registered vehicles.
-                    </p>
-                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />
                 </div>
-                <div className="text-[10px] text-indigo-600 font-bold flex items-center">
-                  <span>Search neighbours directory →</span>
+                <div className="mt-4">
+                  <h4 className="font-display font-black text-slate-800 text-sm tracking-tight leading-snug">
+                    Resident Directory
+                  </h4>
+                  <p className="text-[10px] text-slate-400 font-medium leading-normal mt-1">
+                    Look up Neighbours
+                  </p>
                 </div>
               </div>
 
-              {/* Card 3: Amenities & Clubhouse */}
+              {/* Block 4: Amenities Bookings */}
               <div
                 onClick={() => setActiveSubSection('amenity')}
-                className="bg-white border border-slate-200 hover:border-indigo-400 p-6 rounded-3xl shadow-sm hover:shadow-md cursor-pointer transition duration-150 flex flex-col justify-between space-y-4 group text-left relative overflow-hidden"
+                className="bg-white rounded-3xl p-5 border border-slate-200/60 shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group"
               >
-                <div className="space-y-3">
-                  <div className="w-10 h-10 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center shadow-sm">
+                <div className="flex items-center justify-between w-full">
+                  <div className="w-11 h-11 rounded-full bg-[#059669] text-white flex items-center justify-center shrink-0 shadow-sm">
                     <Sparkles className="w-5 h-5" />
                   </div>
-                  <div>
-                    <h4 className="font-display font-extrabold text-sm text-slate-800 uppercase tracking-tight group-hover:text-indigo-600 transition">
-                      Amenities Bookings
-                    </h4>
-                    <p className="text-[10px] text-slate-400 font-medium leading-relaxed mt-0.5">
-                      Clubhouse function requests, voter approvals, Gym & Movie Theatre entry/exit logs.
-                    </p>
-                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />
                 </div>
-                <div className="text-[10px] text-indigo-600 font-bold flex items-center">
-                  <span>Book Clubhouse or view Gym logs →</span>
+                <div className="mt-4">
+                  <h4 className="font-display font-black text-slate-800 text-sm tracking-tight leading-snug">
+                    Amenities Bookings
+                  </h4>
+                  <p className="text-[10px] text-slate-400 font-medium leading-normal mt-1">
+                    View Building Amenities
+                  </p>
                 </div>
               </div>
 
-              {/* Card 4: Local Services */}
+              {/* Block 5: Local Services */}
               <div
                 onClick={() => setActiveSubSection('services')}
-                className="bg-white border border-slate-200 hover:border-indigo-400 p-6 rounded-3xl shadow-sm hover:shadow-md cursor-pointer transition duration-150 flex flex-col justify-between space-y-4 group text-left relative overflow-hidden"
+                className="bg-white rounded-3xl p-5 border border-slate-200/60 shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group"
               >
-                <div className="space-y-3">
-                  <div className="w-10 h-10 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center shadow-sm">
+                <div className="flex items-center justify-between w-full">
+                  <div className="w-11 h-11 rounded-full bg-[#DB2777] text-white flex items-center justify-center shrink-0 shadow-sm">
                     <Wrench className="w-5 h-5" />
                   </div>
-                  <div>
-                    <h4 className="font-display font-extrabold text-sm text-slate-800 uppercase tracking-tight group-hover:text-indigo-600 transition">
-                      Local Services
-                    </h4>
-                    <p className="text-[10px] text-slate-400 font-medium leading-relaxed mt-0.5">
-                      Assign daily helpers (Maids, Milkmen) to your flat to bypass gatekeeper alerts.
-                    </p>
-                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />
                 </div>
-                <div className="text-[10px] text-indigo-600 font-bold flex items-center">
-                  <span>Manage daily helper mappings →</span>
+                <div className="mt-4">
+                  <h4 className="font-display font-black text-slate-800 text-sm tracking-tight leading-snug">
+                    Local Services
+                  </h4>
+                  <p className="text-[10px] text-slate-400 font-medium leading-normal mt-1">
+                    Contacts for House Help etc.
+                  </p>
                 </div>
               </div>
 
-              {/* Card 5: Help Desk & Financials */}
+              {/* Block 6: Help & Financial */}
               <div
                 onClick={() => setActiveSubSection('helpdesk')}
-                className="bg-white border border-slate-200 hover:border-indigo-400 p-6 rounded-3xl shadow-sm hover:shadow-md cursor-pointer transition duration-150 flex flex-col justify-between space-y-4 group text-left relative overflow-hidden"
+                className="bg-white rounded-3xl p-5 border border-slate-200/60 shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group"
               >
-                <div className="space-y-3">
-                  <div className="w-10 h-10 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center shadow-sm">
+                <div className="flex items-center justify-between w-full">
+                  <div className="w-11 h-11 rounded-full bg-[#EA580C] text-white flex items-center justify-center shrink-0 shadow-sm">
                     <FileText className="w-5 h-5" />
                   </div>
-                  <div>
-                    <h4 className="font-display font-extrabold text-sm text-slate-800 uppercase tracking-tight group-hover:text-indigo-600 transition">
-                      Help Desk & Financials
-                    </h4>
-                    <p className="text-[10px] text-slate-400 font-medium leading-relaxed mt-0.5">
-                      File maintenance complaints, review processed update logs, download society ledgers.
-                    </p>
-                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />
                 </div>
-                <div className="text-[10px] text-indigo-600 font-bold flex items-center">
-                  <span>File complaints or review balance sheets →</span>
-                </div>
-              </div>
-
-              {/* Card 6: Notice Board */}
-              <div
-                onClick={() => setActiveSubSection('notices')}
-                className="bg-white border border-slate-200 hover:border-indigo-400 p-6 rounded-3xl shadow-sm hover:shadow-md cursor-pointer transition duration-150 flex flex-col justify-between space-y-4 group text-left relative overflow-hidden"
-              >
-                <div className="space-y-3">
-                  <div className="w-10 h-10 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center shadow-sm">
-                    <Megaphone className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="font-display font-extrabold text-sm text-slate-800 uppercase tracking-tight group-hover:text-indigo-600 transition">
-                      Notice Board
-                    </h4>
-                    <p className="text-[10px] text-slate-400 font-medium leading-relaxed mt-0.5">
-                      Important notices, water schedules, power shutdowns targeted to your flat.
-                    </p>
-                  </div>
-                </div>
-                <div className="text-[10px] text-indigo-600 font-bold flex items-center">
-                  <span>Read active society announcements →</span>
+                <div className="mt-4">
+                  <h4 className="font-display font-black text-slate-800 text-sm tracking-tight leading-snug">
+                    Help & Financial
+                  </h4>
+                  <p className="text-[10px] text-slate-400 font-medium leading-normal mt-1">
+                    Raise Issues, Society Ledger
+                  </p>
                 </div>
               </div>
 
@@ -1122,9 +1125,10 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
           <div className="space-y-6">
             <button
               onClick={() => setActiveSubSection(null)}
-              className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-4 py-2 rounded-xl flex items-center space-x-1 transition cursor-pointer select-none"
+              className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl flex items-center space-x-1.5 transition cursor-pointer select-none border border-slate-200 shadow-sm"
             >
-              <span>← Back to Community Dashboard</span>
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back to Dashboard</span>
             </button>
 
             {activeSubSection === 'visitors' && (
@@ -1149,6 +1153,7 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
             {activeSubSection === 'directory' && (
               <DirectorySection
                 owners={owners}
+                session={session}
                 directorySearch={directorySearch}
                 setDirectorySearch={setDirectorySearch}
                 dailyHelpers={dailyHelpers}
@@ -1211,6 +1216,7 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                 loadingFinancials={loadingFinancials}
                 onRefreshComplaints={fetchComplaints}
                 announcements={announcements}
+                viewMode="helpdesk"
                 compTitle={compTitle}
                 setCompTitle={setCompTitle}
                 compDesc={compDesc}
@@ -1229,11 +1235,32 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
               />
             )}
 
-            {activeSubSection === 'notices' && (
-              <NoticeSection
+            {activeSubSection === 'complaints' && (
+              <HelpDeskSection
                 wing={wing}
                 flatNo={flatNo}
+                complaints={complaints}
+                loadingComplaints={loadingComplaints}
+                financials={financials}
+                loadingFinancials={loadingFinancials}
+                onRefreshComplaints={fetchComplaints}
                 announcements={announcements}
+                viewMode="complaints"
+                compTitle={compTitle}
+                setCompTitle={setCompTitle}
+                compDesc={compDesc}
+                setCompDesc={setCompDesc}
+                compMedia={compMedia}
+                setCompMedia={setCompMedia}
+                compMediaName={compMediaName}
+                setCompMediaName={setCompMediaName}
+                compMediaType={compMediaType}
+                setCompMediaType={setCompMediaType}
+                compSuccess={compSuccess}
+                setCompSuccess={setCompSuccess}
+                compError={compError}
+                setCompError={setCompError}
+                handleFileChange={handleFileChange}
               />
             )}
           </div>
