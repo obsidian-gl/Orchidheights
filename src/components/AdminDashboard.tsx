@@ -62,13 +62,18 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
 
   // 3. Financial Ledger State
   const [showFinanceForm, setShowFinanceForm] = useState<boolean>(false);
+  const [editingFinance, setEditingFinance] = useState<FinancialReport | null>(null);
   const [finMonth, setFinMonth] = useState<string>('July');
   const [finYear, setFinYear] = useState<number>(2026);
   const [finTitle, setFinTitle] = useState<string>('');
   const [finDesc, setFinDesc] = useState<string>('');
   const [finPdfUrl, setFinPdfUrl] = useState<string>('');
+  const [finFileName, setFinFileName] = useState<string>('');
+  const [finFileType, setFinFileType] = useState<string>('');
   const [finExpense, setFinExpense] = useState<string>('');
   const [finSuccess, setFinSuccess] = useState<string>('');
+  const [finType, setFinType] = useState<'expense' | 'welfare' | 'statement' | 'other'>('expense');
+  const [isDraggingFin, setIsDraggingFin] = useState<boolean>(false);
   
   // CSV Import State
   const [rawCsvText, setRawCsvText] = useState<string>('');
@@ -339,20 +344,20 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
     if (!editingComplaint) return;
     setComplaintSuccess('');
     try {
-      // Direct rewrite using native complaints write
-      await api.deleteComplaint(editingComplaint.id);
       await api.createComplaint({
+        id: editingComplaint.id,
         flatId: editingComplaint.flatId,
         title: editingComplaint.title,
         description: editingComplaint.description,
-        mediaUrl: editingComplaint.mediaUrl
+        mediaUrl: editingComplaint.mediaUrl || '',
+        mediaName: editingComplaint.mediaName || '',
+        mediaType: editingComplaint.mediaType || '',
+        status: editingComplaint.status,
+        createdAt: editingComplaint.createdAt,
+        resolvedAt: editingComplaint.status === 'resolved' ? (editingComplaint.resolvedAt || new Date().toISOString()) : null,
+        resolvedBy: editingComplaint.status === 'resolved' ? (editingComplaint.resolvedBy || 'Secretary Rahul Popat') : null,
+        processNotes: editingComplaint.processNotes || ''
       });
-      // Set status correctly
-      await api.updateComplaintStatus(
-        editingComplaint.id, 
-        editingComplaint.status, 
-        editingComplaint.status === 'resolved' ? 'Administrator' : undefined
-      );
 
       setComplaintSuccess('Complaint updated successfully.');
       setTimeout(() => {
@@ -372,7 +377,7 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
     }
   };
 
-  // Financial Ledger: Create Report & CSV Importer
+  // Financial Ledger: Create/Update Report & CSV Importer
   const handleSaveFinance = async (e: React.FormEvent) => {
     e.preventDefault();
     setFinSuccess('');
@@ -380,25 +385,49 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
 
     try {
       await api.createFinancialReport({
+        id: editingFinance ? editingFinance.id : undefined,
         month: finMonth,
         year: finYear,
         title: finTitle.trim(),
         description: finDesc.trim(),
-        pdfUrl: finPdfUrl.trim(),
+        pdfUrl: finPdfUrl,
+        fileName: finFileName,
+        fileType: finFileType,
         totalExpense: parseFloat(finExpense) || 0,
-        uploadedBy: 'Orchid Heights Admin'
+        uploadedBy: 'Orchid Heights Admin',
+        reportType: finType,
+        createdAt: editingFinance ? editingFinance.createdAt : undefined
       });
-      setFinSuccess('Ledger entry added successfully.');
+      setFinSuccess(editingFinance ? 'Ledger entry updated successfully.' : 'Ledger entry added successfully.');
       setFinTitle('');
       setFinDesc('');
       setFinPdfUrl('');
+      setFinFileName('');
+      setFinFileType('');
       setFinExpense('');
+      setFinType('expense');
+      setEditingFinance(null);
       setShowFinanceForm(false);
       loadAdminData();
       setTimeout(() => setFinSuccess(''), 3000);
-    } catch (e) {
-      console.error(e);
+    } catch (err) {
+      console.error(err);
     }
+  };
+
+  const handleEditFinance = (report: FinancialReport) => {
+    setEditingFinance(report);
+    setFinMonth(report.month);
+    setFinYear(report.year);
+    setFinTitle(report.title);
+    setFinDesc(report.description);
+    setFinPdfUrl(report.pdfUrl || '');
+    setFinFileName(report.fileName || '');
+    setFinFileType(report.fileType || '');
+    setFinExpense(report.totalExpense.toString());
+    setFinType(report.reportType || 'expense');
+    setShowFinanceForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleImportCsv = () => {
@@ -1202,13 +1231,34 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Attached Image URL (Change Media)</label>
-                  <input
-                    type="url"
-                    value={editingComplaint.mediaUrl || ''}
-                    onChange={(e) => setEditingComplaint({ ...editingComplaint, mediaUrl: e.target.value })}
-                    className="w-full bg-white border border-indigo-200 rounded-lg p-2.5 text-xs outline-none focus:border-indigo-500"
-                    placeholder="Enter image link"
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Attached Media Info / Download Link</label>
+                  {editingComplaint.mediaUrl ? (
+                    <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-lg flex items-center justify-between text-xs">
+                      <span className="truncate max-w-[200px] font-mono text-[10px] text-slate-600">
+                        📎 {editingComplaint.mediaName || 'Attached_Device_Upload.file'} ({editingComplaint.mediaType || 'unknown'})
+                      </span>
+                      <a
+                        href={editingComplaint.mediaUrl}
+                        download={editingComplaint.mediaName || 'attachment'}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1 px-2.5 rounded text-[10px] flex items-center space-x-1 cursor-pointer"
+                      >
+                        <Download className="w-3 h-3" />
+                        <span>Download</span>
+                      </a>
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-slate-400 italic">No media attached by resident.</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Secretary Review / Process Done Notes</label>
+                  <textarea
+                    rows={3}
+                    value={editingComplaint.processNotes || ''}
+                    onChange={(e) => setEditingComplaint({ ...editingComplaint, processNotes: e.target.value })}
+                    className="w-full bg-white border border-indigo-200 rounded-lg p-2.5 text-xs outline-none focus:border-indigo-500 resize-none"
+                    placeholder="Provide updates, actions taken, or resolution remarks..."
                   />
                 </div>
 
@@ -1229,14 +1279,14 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
                       <div className="flex gap-1">
                         <button
                           onClick={() => setEditingComplaint(comp)}
-                          className="text-indigo-600 hover:bg-indigo-50 border border-indigo-100 p-1 rounded-lg"
+                          className="text-indigo-600 hover:bg-indigo-50 border border-indigo-100 p-1 rounded-lg cursor-pointer"
                           title="Edit"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => handleDeleteComplaint(comp.id)}
-                          className="text-red-600 hover:bg-red-50 border border-red-100 p-1 rounded-lg"
+                          className="text-red-600 hover:bg-red-50 border border-red-100 p-1 rounded-lg cursor-pointer"
                           title="Delete"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -1249,11 +1299,31 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
                       <p className="text-xs text-slate-400 font-mono mt-0.5">Complaint ID: {comp.id}</p>
                     </div>
 
-                    <p className="text-xs text-slate-600 font-semibold leading-relaxed leading-snug">{comp.description}</p>
+                    <p className="text-xs text-slate-600 font-semibold leading-snug">{comp.description}</p>
                     
                     {comp.mediaUrl && (
-                      <div className="rounded-xl overflow-hidden max-h-[180px] border border-slate-100 bg-slate-50">
-                        <img src={comp.mediaUrl} alt="Complaint attachment" className="w-full h-full object-cover" />
+                      <div className="border border-slate-200 rounded-xl p-2.5 bg-slate-50 flex items-center justify-between text-xs">
+                        <div className="flex items-center space-x-2 truncate">
+                          <span className="text-slate-400 shrink-0">📎</span>
+                          <span className="truncate max-w-[120px] font-mono text-[10px] text-slate-500">
+                            {comp.mediaName || 'Attached File'}
+                          </span>
+                        </div>
+                        <a
+                          href={comp.mediaUrl}
+                          download={comp.mediaName || 'file'}
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-2.5 py-1 rounded-lg text-[9px] flex items-center space-x-1 cursor-pointer transition shrink-0 shadow-sm"
+                        >
+                          <Download className="w-3 h-3" />
+                          <span>Save File</span>
+                        </a>
+                      </div>
+                    )}
+
+                    {comp.processNotes && (
+                      <div className="bg-slate-50 border border-slate-150 rounded-xl p-2.5 text-[10px] text-slate-600 leading-normal">
+                        <p className="font-bold text-slate-400 uppercase text-[9px] tracking-wider mb-0.5">Secretary Review & Actions Done:</p>
+                        <p className="font-medium whitespace-pre-line text-slate-700">{comp.processNotes}</p>
                       </div>
                     )}
                   </div>
@@ -1360,13 +1430,121 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Document/PDF Link (Optional)</label>
-                    <input
-                      type="url" placeholder="https://example.com/reports/june.pdf"
-                      value={finPdfUrl}
-                      onChange={(e) => setFinPdfUrl(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs outline-none focus:bg-white"
-                    />
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Ledger Statement Type</label>
+                    <select
+                      value={finType}
+                      onChange={(e) => setFinType(e.target.value as any)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs font-semibold outline-none focus:bg-white"
+                    >
+                      <option value="expense">Expense Ledger / Society Maintenance Outlay</option>
+                      <option value="welfare">Welfare Funds Collection Ledger</option>
+                      <option value="statement">Financial & Audit Statement</option>
+                      <option value="other">General Financial Record</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase">
+                      Upload Document (PDF, PNG, JPG, JPEG, CSV, Excel, etc.)
+                    </label>
+                    <div
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setIsDraggingFin(true);
+                      }}
+                      onDragLeave={() => setIsDraggingFin(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setIsDraggingFin(false);
+                        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                          const file = e.dataTransfer.files[0];
+                          if (file.size > 8 * 1024 * 1024) {
+                            alert('File too large (max 8MB).');
+                            return;
+                          }
+                          const reader = new FileReader();
+                          reader.onload = (event) => {
+                            if (event.target?.result) {
+                              setFinPdfUrl(event.target.result as string);
+                              setFinFileName(file.name);
+                              setFinFileType(file.type);
+                            }
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                      className={`border-2 border-dashed rounded-xl p-5 text-center transition-all duration-150 flex flex-col items-center justify-center cursor-pointer ${
+                        isDraggingFin
+                          ? 'border-indigo-600 bg-indigo-50/50'
+                          : finPdfUrl
+                          ? 'border-emerald-300 bg-emerald-50/10'
+                          : 'border-slate-200 bg-slate-50 hover:bg-slate-50/80 hover:border-slate-300'
+                      }`}
+                      onClick={() => document.getElementById('fin-file-input')?.click()}
+                    >
+                      <input
+                        id="fin-file-input"
+                        type="file"
+                        accept=".pdf,.png,.jpg,.jpeg,.csv,.xlsx,.xls,image/*,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        className="hidden"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            const file = e.target.files[0];
+                            if (file.size > 8 * 1024 * 1024) {
+                              alert('File too large (max 8MB).');
+                              return;
+                            }
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                              if (event.target?.result) {
+                                setFinPdfUrl(event.target.result as string);
+                                setFinFileName(file.name);
+                                setFinFileType(file.type);
+                              }
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                      
+                      {finPdfUrl ? (
+                        <div className="space-y-2 w-full">
+                          <div className="flex items-center justify-between bg-white border border-slate-150 p-2 rounded-lg text-xs">
+                            <div className="flex items-center space-x-2 truncate">
+                              {finFileType?.startsWith('image/') ? (
+                                <img src={finPdfUrl} className="w-10 h-10 object-cover rounded border border-slate-100" />
+                              ) : (
+                                <FileText className="w-8 h-8 text-indigo-500 shrink-0" />
+                              )}
+                              <div className="text-left truncate">
+                                <p className="font-bold text-slate-700 truncate max-w-[150px]">{finFileName || 'statement_file'}</p>
+                                <p className="text-[9px] text-slate-400 uppercase font-mono">{finFileType || 'file'}</p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setFinPdfUrl('');
+                                setFinFileName('');
+                                setFinFileType('');
+                              }}
+                              className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg border border-red-100 font-bold text-[10px]"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5 py-1">
+                          <div className="mx-auto w-8 h-8 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-full flex items-center justify-center">
+                            <Upload className="w-4 h-4" />
+                          </div>
+                          <p className="text-xs font-bold text-slate-700">Drag & Drop file or click to select</p>
+                          <p className="text-[9px] text-slate-400">Supports PDF, CSV, Excel sheets, PNG, JPG (Max 8MB)</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div>
@@ -1379,9 +1557,30 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
                     />
                   </div>
 
-                  <button type="submit" className="w-full bg-emerald-600 text-white font-bold py-2.5 rounded-xl text-xs shadow transition cursor-pointer">
-                    Save Ledger Entry
-                  </button>
+                  <div className="flex flex-col gap-2">
+                    <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl text-xs shadow transition cursor-pointer">
+                      {editingFinance ? '✓ Update Ledger Entry' : 'Publish Ledger Entry'}
+                    </button>
+                    {editingFinance && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingFinance(null);
+                          setFinTitle('');
+                          setFinDesc('');
+                          setFinPdfUrl('');
+                          setFinFileName('');
+                          setFinFileType('');
+                          setFinExpense('');
+                          setFinType('expense');
+                          setShowFinanceForm(false);
+                        }}
+                        className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2 rounded-xl text-xs transition cursor-pointer"
+                      >
+                        Cancel Edit
+                      </button>
+                    )}
+                  </div>
                 </form>
 
                 {/* CSV Importer Panel */}
@@ -1429,19 +1628,42 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
             {/* List of Ledger Records */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {financialReports.map((report) => (
-                <div key={report.id} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4 flex flex-col justify-between text-left">
+                <div key={report.id} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4 flex flex-col justify-between text-left relative overflow-hidden">
                   <div className="space-y-3">
                     <div className="flex justify-between items-start">
-                      <span className="text-[10px] bg-slate-100 border border-slate-200 px-2 py-0.5 rounded font-black font-mono">
-                        {report.month} {report.year}
-                      </span>
-                      <button
-                        onClick={() => handleDeleteFinance(report.id)}
-                        className="text-red-600 hover:bg-red-50 border border-red-100 p-1.5 rounded-lg transition"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex flex-col gap-1 text-left">
+                        <span className="text-[10px] bg-slate-100 border border-slate-200 px-2 py-0.5 rounded font-black font-mono w-max">
+                          {report.month} {report.year}
+                        </span>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase w-max border ${
+                          report.reportType === 'welfare' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                          report.reportType === 'statement' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                          report.reportType === 'other' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                          'bg-indigo-50 text-indigo-700 border-indigo-200'
+                        }`}>
+                          {report.reportType === 'welfare' ? 'Welfare Funds' :
+                           report.reportType === 'statement' ? 'Audit Statement' :
+                           report.reportType === 'other' ? 'Other Record' :
+                           'Expenses'}
+                        </span>
+                      </div>
+                      
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => handleEditFinance(report)}
+                          className="text-indigo-600 hover:bg-indigo-50 border border-indigo-100 p-1.5 rounded-lg transition cursor-pointer"
+                          title="Edit"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteFinance(report.id)}
+                          className="text-red-600 hover:bg-red-50 border border-red-100 p-1.5 rounded-lg transition cursor-pointer"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
 
                     <div>
@@ -1452,19 +1674,25 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
                     <p className="text-xs text-slate-600 leading-relaxed font-semibold whitespace-pre-line">{report.description}</p>
                     
                     <div className="bg-slate-50 border border-slate-150 p-3 rounded-xl flex items-center justify-between">
-                      <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">Total Expense:</span>
-                      <span className="text-sm font-black text-slate-900">₹{report.totalExpense.toLocaleString('en-IN')}</span>
+                      <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">Total Expense / Ledger Amount:</span>
+                      <span className="text-sm font-black text-slate-900 font-mono">₹{report.totalExpense.toLocaleString('en-IN')}</span>
                     </div>
                   </div>
 
                   <div className="border-t border-slate-100 pt-3 flex justify-between items-center text-[10px] text-slate-400 font-mono">
                     {report.pdfUrl ? (
-                      <a href={report.pdfUrl} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline font-bold flex items-center gap-1">
-                        <FileText className="w-3.5 h-3.5" />
-                        <span>View Attachment Document</span>
+                      <a
+                        href={report.pdfUrl}
+                        download={report.fileName || `${report.title}.pdf`}
+                        className="text-indigo-600 hover:underline font-bold flex items-center gap-1 cursor-pointer"
+                      >
+                        <FileText className="w-3.5 h-3.5 text-indigo-500" />
+                        <span className="truncate max-w-[150px]">
+                          Download {report.fileName || 'Document.pdf'}
+                        </span>
                       </a>
                     ) : (
-                      <span className="text-slate-400">No document attached</span>
+                      <span className="text-slate-400 italic">No document attached</span>
                     )}
                     <span>Uploaded: {new Date(report.createdAt).toLocaleDateString('en-IN')}</span>
                   </div>

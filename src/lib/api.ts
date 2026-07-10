@@ -212,7 +212,7 @@ export const api = {
   getComplaints: async (): Promise<Complaint[]> => {
     return getComplaintsList();
   },
-  createComplaint: async (payload: { flatId: string; title: string; description: string; mediaUrl?: string }): Promise<Complaint> => {
+  createComplaint: async (payload: any): Promise<Complaint> => {
     return createComplaint(payload);
   },
   updateComplaintStatus: async (id: string, status: 'open' | 'in-progress' | 'resolved', resolvedBy?: string): Promise<boolean> => {
@@ -226,7 +226,7 @@ export const api = {
   getFinancialReports: async (): Promise<FinancialReport[]> => {
     return getFinancialReportsList();
   },
-  createFinancialReport: async (payload: { month: string; year: number; title: string; description: string; pdfUrl?: string; totalExpense: number; uploadedBy?: string }): Promise<FinancialReport> => {
+  createFinancialReport: async (payload: any): Promise<FinancialReport> => {
     return createFinancialReport(payload);
   },
   deleteFinancialReport: async (id: string): Promise<boolean> => {

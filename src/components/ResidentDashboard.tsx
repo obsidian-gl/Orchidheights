@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Bell, ShieldAlert, Check, X, Users, Car, Phone, Lock, Eye, EyeOff, ClipboardList, AlertCircle, Trash2, Plus, Clock, RefreshCw, Megaphone, FileText, Download, Search, Wrench, CheckCircle } from 'lucide-react';
+import { Bell, ShieldAlert, Check, X, Users, Car, Phone, Lock, Eye, EyeOff, ClipboardList, AlertCircle, Trash2, Plus, Clock, RefreshCw, Megaphone, FileText, Download, Search, Wrench, CheckCircle, Upload } from 'lucide-react';
 import { FlatOwner, Visitor, Vehicle, UserSession, Announcement } from '../types';
 import { api, detectServerEnvironment } from '../lib/api';
 
@@ -180,8 +180,11 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   const [compTitle, setCompTitle] = useState<string>('');
   const [compDesc, setCompDesc] = useState<string>('');
   const [compMedia, setCompMedia] = useState<string>('');
+  const [compMediaName, setCompMediaName] = useState<string>('');
+  const [compMediaType, setCompMediaType] = useState<string>('');
   const [compSuccess, setCompSuccess] = useState<string>('');
   const [compError, setCompError] = useState<string>('');
+  const [isDragging, setIsDragging] = useState<boolean>(false);
 
   // Financial Reports state
   const [financials, setFinancials] = useState<any[]>([]);
@@ -240,6 +243,24 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
     }
   }, [residentTab]);
 
+  // File change handler
+  const handleFileChange = (file: File) => {
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) {
+      setCompError('File is too large. Max size allowed is 8MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (e.target?.result) {
+        setCompMedia(e.target.result as string);
+        setCompMediaName(file.name);
+        setCompMediaType(file.type);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   // Raise a new complaint
   const handleCreateComplaint = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -252,12 +273,16 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
         flatId,
         title: compTitle.trim(),
         description: compDesc.trim(),
-        mediaUrl: compMedia.trim()
+        mediaUrl: compMedia,
+        mediaName: compMediaName,
+        mediaType: compMediaType
       });
       setCompSuccess('Your complaint has been successfully registered on the board! The Secretary has been notified.');
       setCompTitle('');
       setCompDesc('');
       setCompMedia('');
+      setCompMediaName('');
+      setCompMediaType('');
       fetchComplaints();
     } catch (err: any) {
       setCompError(err.message || 'Failed to submit complaint.');
@@ -1135,14 +1160,81 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase">Photo / Video Link (Optional)</label>
-                <input
-                  type="url"
-                  placeholder="e.g. https://images.unsplash.com/... or base64"
-                  value={compMedia}
-                  onChange={(e) => setCompMedia(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl p-3 text-xs font-medium transition outline-none font-mono"
-                />
+                <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase">
+                  Attach Photo, Video or PDF Document
+                </label>
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                      handleFileChange(e.dataTransfer.files[0]);
+                    }
+                  }}
+                  className={`border-2 border-dashed rounded-xl p-5 text-center transition-all duration-150 flex flex-col items-center justify-center cursor-pointer ${
+                    isDragging
+                      ? 'border-indigo-600 bg-indigo-50/50'
+                      : compMedia
+                      ? 'border-emerald-300 bg-emerald-50/10'
+                      : 'border-slate-200 bg-slate-50 hover:bg-slate-50/80 hover:border-slate-300'
+                  }`}
+                  onClick={() => document.getElementById('complaint-file-input')?.click()}
+                >
+                  <input
+                    id="complaint-file-input"
+                    type="file"
+                    accept="image/*,video/*,application/pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        handleFileChange(e.target.files[0]);
+                      }
+                    }}
+                  />
+                  
+                  {compMedia ? (
+                    <div className="space-y-2 w-full">
+                      <div className="flex items-center justify-between bg-white border border-slate-150 p-2 rounded-lg text-xs">
+                        <div className="flex items-center space-x-2 truncate">
+                          {compMediaType?.startsWith('image/') ? (
+                            <img src={compMedia} className="w-10 h-10 object-cover rounded-md border border-slate-100" />
+                          ) : (
+                            <FileText className="w-8 h-8 text-red-500 shrink-0" />
+                          )}
+                          <div className="text-left truncate">
+                            <p className="font-bold text-slate-700 truncate max-w-[150px]">{compMediaName || 'uploaded_file'}</p>
+                            <p className="text-[9px] text-slate-400 uppercase font-mono">{compMediaType || 'file'}</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCompMedia('');
+                            setCompMediaName('');
+                            setCompMediaType('');
+                          }}
+                          className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg border border-red-100 font-bold text-[10px]"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 py-2">
+                      <div className="mx-auto w-8 h-8 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-full flex items-center justify-center">
+                        <Upload className="w-4 h-4" />
+                      </div>
+                      <p className="text-xs font-bold text-slate-700">Drag & Drop or click to upload</p>
+                      <p className="text-[9px] text-slate-400">Supports PNG, JPG, JPEG, PDF or Videos up to 8MB</p>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <button
@@ -1206,8 +1298,65 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                     </p>
 
                     {comp.mediaUrl && (
-                      <div className="rounded-xl overflow-hidden max-h-48 border border-slate-200 shadow-inner">
-                        <img src={comp.mediaUrl} alt="Complaint Attachment" className="w-full h-full object-cover" referrerPolicy="no-referrer" onError={(e) => e.currentTarget.style.display = 'none'} />
+                      <div>
+                        {comp.mediaType === 'application/pdf' || comp.mediaUrl.startsWith('data:application/pdf') || comp.mediaName?.endsWith('.pdf') ? (
+                          <div className="bg-slate-50 hover:bg-slate-100 transition border border-slate-200 rounded-xl p-3 flex items-center justify-between">
+                            <div className="flex items-center space-x-2 truncate">
+                              <FileText className="w-5 h-5 text-red-500 shrink-0" />
+                              <div className="text-left truncate">
+                                <p className="text-xs font-bold text-slate-700 truncate max-w-[150px]">
+                                  {comp.mediaName || 'Attached_Complaint_Document.pdf'}
+                                </p>
+                                <p className="text-[9px] font-mono text-slate-400">PDF Document</p>
+                              </div>
+                            </div>
+                            <a
+                              href={comp.mediaUrl}
+                              download={comp.mediaName || 'complaint_document.pdf'}
+                              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1 px-2.5 rounded-lg text-[9px] flex items-center space-x-1 shadow cursor-pointer transition shrink-0"
+                            >
+                              <Download className="w-3 h-3" />
+                              <span>Download PDF</span>
+                            </a>
+                          </div>
+                        ) : comp.mediaType?.startsWith('image/') || comp.mediaUrl.startsWith('data:image/') || comp.mediaName?.match(/\.(png|jpg|jpeg|gif)$/i) ? (
+                          <div className="rounded-xl overflow-hidden max-h-48 border border-slate-200 shadow-inner relative group bg-slate-50">
+                            <img src={comp.mediaUrl} alt="Complaint Attachment" className="w-full h-full object-cover" referrerPolicy="no-referrer" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                              <a href={comp.mediaUrl} download={comp.mediaName || 'complaint_attachment.png'} className="bg-white/95 text-slate-800 font-bold px-3 py-1.5 rounded-lg text-[10px] flex items-center space-x-1 shadow hover:bg-white transition">
+                                <Download className="w-3.5 h-3.5" />
+                                <span>Save Image</span>
+                              </a>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="bg-slate-50 hover:bg-slate-100 transition border border-slate-200 rounded-xl p-3 flex items-center justify-between">
+                            <div className="flex items-center space-x-2 truncate">
+                              <FileText className="w-5 h-5 text-indigo-500 shrink-0" />
+                              <div className="text-left truncate">
+                                <p className="text-xs font-bold text-slate-700 truncate max-w-[150px]">
+                                  {comp.mediaName || 'Attachment_File'}
+                                </p>
+                                <p className="text-[9px] font-mono text-slate-400">{comp.mediaType || 'Document/Attachment'}</p>
+                              </div>
+                            </div>
+                            <a
+                              href={comp.mediaUrl}
+                              download={comp.mediaName || 'complaint_attachment'}
+                              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1 px-2.5 rounded-lg text-[9px] flex items-center space-x-1 shadow cursor-pointer transition shrink-0"
+                            >
+                              <Download className="w-3 h-3" />
+                              <span>Download</span>
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {comp.processNotes && (
+                      <div className="bg-slate-50 border border-slate-150 p-2.5 rounded-xl text-[10px] text-slate-700 leading-snug space-y-1">
+                        <p className="font-bold text-[9px] text-slate-400 uppercase tracking-wider font-mono">Process Updates & Review Notes:</p>
+                        <p className="font-medium whitespace-pre-line text-slate-600">{comp.processNotes}</p>
                       </div>
                     )}
 
@@ -1292,31 +1441,48 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                     </span>
 
                     <div className="space-y-2 text-left mb-4">
-                      <p className="text-[10px] font-bold text-indigo-600 uppercase font-mono">Ledger Statement</p>
-                      <h4 className="font-bold text-xs text-slate-800 uppercase">{fin.title}</h4>
-                      <p className="text-xs text-slate-500 leading-relaxed line-clamp-3">
+                      <div className="flex items-center space-x-2">
+                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded font-mono uppercase ${
+                          fin.reportType === 'welfare' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
+                          fin.reportType === 'statement' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                          fin.reportType === 'other' ? 'bg-purple-100 text-purple-800 border border-purple-200' :
+                          'bg-indigo-100 text-indigo-800 border border-indigo-200'
+                        }`}>
+                          {fin.reportType === 'welfare' ? 'Welfare Fund' :
+                           fin.reportType === 'statement' ? 'Financial Statement' :
+                           fin.reportType === 'other' ? 'General Record' :
+                           'Expense Ledger'}
+                        </span>
+                        
+                        {fin.fileType && (
+                          <span className="text-[8px] text-slate-400 font-mono tracking-wider font-bold uppercase">
+                            {fin.fileType.split('/').pop()?.toUpperCase() || 'FILE'}
+                          </span>
+                        )}
+                      </div>
+                      <h4 className="font-bold text-xs text-slate-800 uppercase mt-1.5">{fin.title}</h4>
+                      <p className="text-xs text-slate-500 leading-relaxed whitespace-pre-line line-clamp-3">
                         {fin.description}
                       </p>
                     </div>
 
                     <div className="flex items-center justify-between border-t border-slate-100 pt-3.5 mt-2 bg-slate-50/50 -mx-4 -mb-4 p-4 rounded-b-2xl">
                       <div className="text-left">
-                        <p className="text-[8px] font-mono text-slate-400 uppercase font-bold">Total Outlay</p>
+                        <p className="text-[8px] font-mono text-slate-400 uppercase font-bold">Total Ledger Outlay</p>
                         <p className="text-xs font-black text-slate-700 font-mono mt-0.5">₹{fin.totalExpense.toLocaleString('en-IN')}</p>
                       </div>
 
                       {fin.pdfUrl ? (
                         <a
                           href={fin.pdfUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                          download={fin.fileName || `${fin.title}.pdf`}
                           className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1.5 px-3 rounded-lg text-[10px] flex items-center space-x-1.5 shadow transition cursor-pointer"
                         >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>Download Report</span>
+                          <Download className="w-3.5 h-3.5 animate-bounce" />
+                          <span>Download Statement</span>
                         </a>
                       ) : (
-                        <span className="text-[10px] text-slate-400 italic">No document attached</span>
+                        <span className="text-[10px] text-slate-400 italic font-medium">No document attached</span>
                       )}
                     </div>
                   </div>

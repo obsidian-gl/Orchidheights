@@ -80,10 +80,13 @@ export interface Complaint {
   title: string;
   description: string;
   mediaUrl?: string;
+  mediaName?: string;
+  mediaType?: string;
   status: 'open' | 'in-progress' | 'resolved';
   createdAt: string;
   resolvedAt?: string;
   resolvedBy?: string;
+  processNotes?: string;
 }
 
 export interface FinancialReport {
@@ -93,9 +96,12 @@ export interface FinancialReport {
   title: string;
   description: string;
   pdfUrl?: string;
+  fileName?: string;
+  fileType?: string;
   totalExpense: number;
   createdAt: string;
   uploadedBy: string;
+  reportType?: 'expense' | 'welfare' | 'statement' | 'other';
 }
 
 export interface EssentialContact {

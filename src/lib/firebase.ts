@@ -782,16 +782,21 @@ export async function getComplaintsList(): Promise<Complaint[]> {
  * Create a new complaint
  */
 export async function createComplaint(payload: any): Promise<Complaint> {
-  const { flatId, title, description, mediaUrl } = payload;
-  const complaintId = 'comp_' + Math.random().toString(36).substring(2, 11);
+  const { id, flatId, title, description, mediaUrl, mediaName, mediaType, status, createdAt, resolvedAt, resolvedBy, processNotes } = payload;
+  const complaintId = id || 'comp_' + Math.random().toString(36).substring(2, 11);
   const newComplaint: Complaint = {
     id: complaintId,
     flatId,
     title,
     description,
     mediaUrl: mediaUrl || '',
-    status: 'open',
-    createdAt: new Date().toISOString()
+    mediaName: mediaName || '',
+    mediaType: mediaType || '',
+    status: status || 'open',
+    createdAt: createdAt || new Date().toISOString(),
+    resolvedAt: resolvedAt || null,
+    resolvedBy: resolvedBy || null,
+    processNotes: processNotes || ''
   };
 
   try {
@@ -808,7 +813,8 @@ export async function createComplaint(payload: any): Promise<Complaint> {
 export async function updateComplaintStatus(
   complaintId: string,
   status: 'open' | 'in-progress' | 'resolved',
-  resolvedBy?: string
+  resolvedBy?: string,
+  processNotes?: string
 ): Promise<boolean> {
   const docRef = doc(db, 'complaints', complaintId);
   try {
@@ -819,7 +825,8 @@ export async function updateComplaintStatus(
         ...data,
         status,
         resolvedAt: status === 'resolved' ? new Date().toISOString() : null,
-        resolvedBy: status === 'resolved' ? resolvedBy || 'Secretary' : null
+        resolvedBy: status === 'resolved' ? resolvedBy || 'Secretary' : null,
+        processNotes: processNotes !== undefined ? processNotes : (data.processNotes || '')
       };
       await setDoc(docRef, updated);
       return true;
@@ -862,11 +869,11 @@ export async function getFinancialReportsList(): Promise<FinancialReport[]> {
 }
 
 /**
- * Create a new financial report
+ * Create a new financial report (supports upsert)
  */
 export async function createFinancialReport(payload: any): Promise<FinancialReport> {
-  const { month, year, title, description, pdfUrl, totalExpense, uploadedBy } = payload;
-  const reportId = 'fin_' + Math.random().toString(36).substring(2, 11);
+  const { id, month, year, title, description, pdfUrl, fileName, fileType, totalExpense, uploadedBy, reportType } = payload;
+  const reportId = id || 'fin_' + Math.random().toString(36).substring(2, 11);
   const newReport: FinancialReport = {
     id: reportId,
     month,
@@ -874,9 +881,12 @@ export async function createFinancialReport(payload: any): Promise<FinancialRepo
     title,
     description,
     pdfUrl: pdfUrl || '',
+    fileName: fileName || '',
+    fileType: fileType || '',
     totalExpense: parseFloat(totalExpense) || 0,
-    createdAt: new Date().toISOString(),
-    uploadedBy: uploadedBy || 'Rahul Popat (B-1104 / Admin)'
+    createdAt: payload.createdAt || new Date().toISOString(),
+    uploadedBy: uploadedBy || 'Rahul Popat (B-1104 / Admin)',
+    reportType: reportType || 'expense'
   };
 
   try {
