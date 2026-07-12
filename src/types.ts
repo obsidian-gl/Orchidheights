@@ -73,6 +73,9 @@ export interface Announcement {
   sender: string;
   imageUrl?: string;
   videoUrl?: string;
+  pdfUrl?: string;
+  fileName?: string;
+  fileType?: string;
 }
 
 export interface Complaint {

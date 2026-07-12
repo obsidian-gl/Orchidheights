@@ -991,89 +991,96 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
       {/* Top Header Bar & Identity Card matching the reference image exactly */}
       {activeSubSection === null && (
         <div className="p-4 pt-6 pb-2 text-left space-y-5">
-          {/* Top Brand Bar */}
-          <div className="flex items-center justify-between w-full">
-            <div>
-              <h1 className="font-sans font-black text-slate-800 text-lg leading-tight uppercase tracking-tight">
-                Orchid Heights
-              </h1>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-sans">
-                Owners Association • ઓર્કીડ સોસાયટી
-              </p>
+          {/* Integrated Premium Hero Cover Card mimicking the reference image precisely */}
+          <div className="relative overflow-hidden w-full rounded-[36px] min-h-[300px] text-white border border-[#242A66]/30 shadow-2xl flex flex-col justify-between p-6 max-w-lg mx-auto">
+            {/* Real photography background of the luxury high-rise Orchid Heights complex */}
+            <div className="absolute inset-0 z-0 select-none pointer-events-none">
+              <img 
+                src="https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=1200&q=80" 
+                alt="Orchid Heights Luxury Building" 
+                className="w-full h-full object-cover transition-transform duration-700 hover:scale-105"
+                referrerPolicy="no-referrer"
+              />
+              {/* Elegant dual-tone dark gradient overlay for text readability and premium tone */}
+              <div className="absolute inset-0 bg-gradient-to-b from-slate-950/75 via-slate-900/80 to-slate-950/95" />
             </div>
-            
-            <div className="flex items-center gap-3">
-              {/* Hold to SOS Button */}
-              <button
-                onMouseDown={startSosHold}
-                onMouseUp={cancelSosHold}
-                onMouseLeave={cancelSosHold}
-                onTouchStart={startSosHold}
-                onTouchEnd={cancelSosHold}
-                onTouchCancel={cancelSosHold}
-                className="relative w-12 h-12 rounded-full bg-red-600 hover:bg-red-700 text-white font-sans font-black text-[11px] tracking-wider flex items-center justify-center shadow-lg transition-all transform active:scale-95 cursor-pointer overflow-hidden select-none"
-                title="Hold for 5 seconds to broadcast SOS alarm"
-              >
-                {isHoldingSos && (
-                  <div 
-                    className="absolute bottom-0 left-0 right-0 bg-red-900 transition-all duration-75"
-                    style={{ height: `${sosHoldProgress}%`, opacity: 0.8 }}
-                  />
-                )}
-                <span className="relative z-10 font-black">
-                  {isHoldingSos ? `${Math.ceil((5000 - (sosHoldProgress / 100) * 5000) / 1000)}s` : 'SOS'}
-                </span>
-              </button>
 
-              {/* Notification bell with badge */}
-              <button
-                onClick={() => setIsNotificationsOpen(true)}
-                className="relative p-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full transition cursor-pointer shadow-sm border border-slate-200/50"
-                title="Open Notifications Panel"
-              >
-                <Bell className="w-5 h-5" />
-                {(activePoll.length + activeSosAlerts.length) > 0 && (
-                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-[#7C3AED] text-white text-[9px] font-black rounded-full flex items-center justify-center shadow animate-bounce">
-                    {activePoll.length + activeSosAlerts.length}
+            {/* Top Interactive Row inside the Banner */}
+            <div className="relative z-10 flex items-center justify-between w-full">
+              <div>
+                <h1 className="font-sans font-black text-white text-base leading-tight uppercase tracking-tight shadow-sm">
+                  Orchid Heights
+                </h1>
+                <p className="text-[9px] text-indigo-200 font-bold uppercase tracking-widest font-sans">
+                  Owners Association • ઓર્કીડ સોસાયટી
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                {/* Hold to SOS Button */}
+                <button
+                  onMouseDown={startSosHold}
+                  onMouseUp={cancelSosHold}
+                  onMouseLeave={cancelSosHold}
+                  onTouchStart={startSosHold}
+                  onTouchEnd={cancelSosHold}
+                  onTouchCancel={cancelSosHold}
+                  className="relative w-11 h-11 rounded-full bg-red-600 hover:bg-red-700 text-white font-sans font-black text-[10px] tracking-wider flex items-center justify-center shadow-lg transition-all transform active:scale-95 cursor-pointer overflow-hidden select-none"
+                  title="Hold for 5 seconds to broadcast SOS alarm"
+                >
+                  {isHoldingSos && (
+                    <div 
+                      className="absolute bottom-0 left-0 right-0 bg-red-900 transition-all duration-75"
+                      style={{ height: `${sosHoldProgress}%`, opacity: 0.8 }}
+                    />
+                  )}
+                  <span className="relative z-10 font-black">
+                    {isHoldingSos ? `${Math.ceil((5000 - (sosHoldProgress / 100) * 5000) / 1000)}s` : 'SOS'}
                   </span>
-                )}
-              </button>
-            </div>
-          </div>
+                </button>
 
-          {/* High-fidelity identity card mimicking the uploaded reference image exactly */}
-          <div className="relative overflow-hidden w-full rounded-[32px] bg-gradient-to-b from-[#0F102B] via-[#0E1026] to-[#0A0B1A] p-8 text-center text-white border border-[#242A66]/30 shadow-2xl flex flex-col items-center justify-center min-h-[220px] max-w-lg mx-auto">
-            {/* Vector silhouette overlay (profile outline icon overlapping the right side) */}
-            <div className="absolute right-4 bottom-2 opacity-[0.04] pointer-events-none select-none">
-              <svg className="w-52 h-52 text-indigo-400" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <circle cx="50" cy="32" r="18" />
-                <path d="M12,85 C12,58 30,55 50,55 C70,55 88,58 88,85" stroke-linecap="round" />
-              </svg>
-            </div>
-            
-            {/* Initials Avatar Badge centered */}
-            <div className="w-16 h-16 rounded-full border border-white/20 bg-white/5 flex items-center justify-center text-white font-sans font-medium text-2xl select-none mb-4 shadow-inner">
-              {firstName.substring(0, 2).toUpperCase()}
+                {/* Notification bell with badge */}
+                <button
+                  onClick={() => setIsNotificationsOpen(true)}
+                  className="relative p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-full transition cursor-pointer shadow-sm border border-white/10 backdrop-blur-md"
+                  title="Open Notifications Panel"
+                >
+                  <Bell className="w-4.5 h-4.5" />
+                  {(activePoll.length + activeSosAlerts.length) > 0 && (
+                    <span className="absolute -top-1 -right-1 w-4.5 h-4.5 bg-[#7C3AED] text-white text-[8px] font-black rounded-full flex items-center justify-center shadow animate-bounce">
+                      {activePoll.length + activeSosAlerts.length}
+                    </span>
+                  )}
+                </button>
+              </div>
             </div>
 
-            {/* Blue-violet Role Pill */}
-            <div className="inline-flex items-center bg-[#242A66]/70 border border-[#3C47A3]/50 px-5 py-1.5 rounded-full mb-3 shadow-sm select-none">
-              <span className="text-[#A5B4FC] text-[10px] font-sans font-bold uppercase tracking-widest">
-                FLAT {wing}-{flatNo} RESIDENT OWNER
-              </span>
+            {/* Resident Identity Info Section inside the Banner */}
+            <div className="relative z-10 flex flex-col items-center text-center mt-6 mb-2">
+              {/* Initials Avatar Badge centered */}
+              <div className="w-14 h-14 rounded-full border border-white/25 bg-white/10 backdrop-blur-sm flex items-center justify-center text-white font-sans font-medium text-xl select-none mb-3 shadow-inner">
+                {firstName.substring(0, 2).toUpperCase()}
+              </div>
+
+              {/* Blue-violet Role Pill */}
+              <div className="inline-flex items-center bg-[#7C3AED]/30 border border-[#7C3AED]/50 px-4.5 py-1 rounded-full mb-2.5 shadow-sm select-none">
+                <span className="text-[#C7D2FE] text-[9px] font-sans font-bold uppercase tracking-widest">
+                  FLAT {wing}-{flatNo} RESIDENT OWNER
+                </span>
+              </div>
+
+              {/* Bold Upper-case Name */}
+              <h3 className="text-white font-sans font-black text-lg sm:text-xl tracking-wide uppercase leading-tight max-w-[90%]">
+                {fullName}
+              </h3>
+
+              {/* Gujarati Subtitle translation */}
+              {nameGu && (
+                <p className="text-[#94A3B8] text-[11px] sm:text-xs font-semibold tracking-wide mt-1 font-sans">
+                  {nameGu}
+                </p>
+              )}
             </div>
-
-            {/* Bold Upper-case Name */}
-            <h3 className="text-white font-sans font-black text-xl sm:text-2xl tracking-wide uppercase leading-tight max-w-[90%] z-10">
-              {fullName}
-            </h3>
-
-            {/* Gujarati Subtitle translation */}
-            {nameGu && (
-              <p className="text-[#94A3B8] text-xs sm:text-sm font-semibold tracking-wide mt-2 font-sans z-10">
-                {nameGu}
-              </p>
-            )}
           </div>
         </div>
       )}
@@ -1606,22 +1613,27 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                   ))}
 
                   {/* Recent Society Announcements */}
-                  {announcements.slice(0, 3).map((notice) => (
-                    <div key={notice.id} className="bg-slate-50 border border-slate-100 p-4 rounded-2xl flex items-start space-x-3 text-left">
-                      <Megaphone className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
-                      <div className="space-y-1 w-full">
-                        <p className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                          📢 NOTICE: {notice.title}
-                        </p>
-                        <p className="text-xs text-slate-500 leading-relaxed line-clamp-2 mt-0.5">
-                          {notice.message}
-                        </p>
-                        <p className="text-[10px] text-slate-400 font-mono mt-0.5">
-                          Posted: {new Date(notice.createdAt || '').toLocaleDateString()}
-                        </p>
+                  {announcements.slice(0, 5).map((notice) => {
+                    const noticeTitle = notice.title || notice.text?.slice(0, 40) || 'Society Notice';
+                    const noticeMessage = notice.message || notice.content || notice.text || '';
+                    const noticeDate = notice.createdAt || notice.timestamp || new Date().toISOString();
+                    return (
+                      <div key={notice.id} className="bg-slate-50 border border-slate-100 p-4 rounded-2xl flex items-start space-x-3 text-left">
+                        <Megaphone className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
+                        <div className="space-y-1 w-full">
+                          <p className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                            📢 NOTICE: {noticeTitle}
+                          </p>
+                          <p className="text-xs text-slate-500 leading-relaxed line-clamp-2 mt-0.5 whitespace-pre-line">
+                            {noticeMessage}
+                          </p>
+                          <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                            Posted: {new Date(noticeDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </>
               )}
             </div>

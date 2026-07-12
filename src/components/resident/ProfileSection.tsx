@@ -128,29 +128,7 @@ export default function ProfileSection({
         </div>
       )}
 
-      {/* Profile Header card */}
-      <div className="bg-gradient-to-r from-slate-900 to-indigo-950 rounded-3xl p-6 text-white relative overflow-hidden shadow-xl border border-slate-850">
-        <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
-          <User className="w-44 h-44" />
-        </div>
 
-        <div className="flex flex-col sm:flex-row items-center gap-5">
-          <div className="w-16 h-16 bg-white/10 backdrop-blur border border-white/20 rounded-full flex items-center justify-center font-display font-black text-2xl uppercase select-none shadow-md shrink-0">
-            {myOwnerData?.nameEn?.substring(0, 2) || 'OH'}
-          </div>
-          <div className="text-center sm:text-left">
-            <span className="font-mono bg-indigo-500/30 border border-indigo-400/20 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">
-              Flat {wing}-{flatNo} Resident Owner
-            </span>
-            <h3 className="font-display font-black text-2xl mt-1.5 uppercase leading-none tracking-tight">
-              {myOwnerData?.nameEn || 'Resident Name'}
-            </h3>
-            {myOwnerData?.nameGu && (
-              <p className="text-xs text-indigo-200 font-medium mt-1">{myOwnerData.nameGu}</p>
-            )}
-          </div>
-        </div>
-      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
         

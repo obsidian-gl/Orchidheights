@@ -104,6 +104,10 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
   const [noticeText, setNoticeText] = useState<string>('');
   const [noticeImage, setNoticeImage] = useState<string>('');
   const [noticeVideo, setNoticeVideo] = useState<string>('');
+  const [noticePdfUrl, setNoticePdfUrl] = useState<string>('');
+  const [noticeFileName, setNoticeFileName] = useState<string>('');
+  const [noticeFileType, setNoticeFileType] = useState<string>('');
+  const [isDraggingNotice, setIsDraggingNotice] = useState<boolean>(false);
   const [noticeSuccess, setNoticeSuccess] = useState<string>('');
 
   // 2. Complaint State
@@ -505,7 +509,10 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
       timestamp: editingAnnouncement ? editingAnnouncement.timestamp : new Date().toISOString(),
       sender: 'Orchid Heights Administration',
       imageUrl: noticeImage.trim(),
-      videoUrl: noticeVideo.trim()
+      videoUrl: noticeVideo.trim(),
+      pdfUrl: noticePdfUrl,
+      fileName: noticeFileName,
+      fileType: noticeFileType
     };
 
     if (noticeTarget !== 'all') {
@@ -521,6 +528,9 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
       setNoticeText('');
       setNoticeImage('');
       setNoticeVideo('');
+      setNoticePdfUrl('');
+      setNoticeFileName('');
+      setNoticeFileType('');
       setEditingAnnouncement(null);
       setShowNoticeForm(false);
       loadAdminData();
@@ -538,6 +548,9 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
     setNoticeText(ann.text);
     setNoticeImage(ann.imageUrl || '');
     setNoticeVideo(ann.videoUrl || '');
+    setNoticePdfUrl(ann.pdfUrl || '');
+    setNoticeFileName(ann.fileName || '');
+    setNoticeFileType(ann.fileType || '');
     setShowNoticeForm(true);
   };
 
@@ -1420,9 +1433,115 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
                   />
                 </div>
 
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase">
+                    Upload Announcement Document/Media (PDF, PNG, JPG, MP4, etc.)
+                  </label>
+                  <div
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsDraggingNotice(true);
+                    }}
+                    onDragLeave={() => setIsDraggingNotice(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setIsDraggingNotice(false);
+                      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                        const file = e.dataTransfer.files[0];
+                        if (file.size > 15 * 1024 * 1024) {
+                          alert('File too large (max 15MB).');
+                          return;
+                        }
+                        const reader = new FileReader();
+                        reader.onload = (event) => {
+                          if (event.target?.result) {
+                            setNoticePdfUrl(event.target.result as string);
+                            setNoticeFileName(file.name);
+                            setNoticeFileType(file.type);
+                          }
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                    className={`border-2 border-dashed rounded-xl p-5 text-center transition-all duration-150 flex flex-col items-center justify-center cursor-pointer ${
+                      isDraggingNotice
+                        ? 'border-indigo-600 bg-indigo-50/50'
+                        : noticePdfUrl
+                        ? 'border-emerald-300 bg-emerald-50/10'
+                        : 'border-slate-200 bg-slate-50 hover:bg-slate-50/80 hover:border-slate-300'
+                    }`}
+                    onClick={() => document.getElementById('notice-file-input')?.click()}
+                  >
+                    <input
+                      id="notice-file-input"
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg,.mp4,.mov,.avi,.csv,.xlsx,.xls,image/*,video/*,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          const file = e.target.files[0];
+                          if (file.size > 15 * 1024 * 1024) {
+                            alert('File too large (max 15MB).');
+                            return;
+                          }
+                          const reader = new FileReader();
+                          reader.onload = (event) => {
+                            if (event.target?.result) {
+                              setNoticePdfUrl(event.target.result as string);
+                              setNoticeFileName(file.name);
+                              setNoticeFileType(file.type);
+                            }
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                    
+                    {noticePdfUrl ? (
+                      <div className="space-y-2 w-full">
+                        <div className="flex items-center justify-between bg-white border border-slate-150 p-2 rounded-lg text-xs">
+                          <div className="flex items-center space-x-2 truncate">
+                            {noticeFileType?.startsWith('image/') ? (
+                              <img src={noticePdfUrl} className="w-10 h-10 object-cover rounded border border-slate-100" />
+                            ) : noticeFileType?.startsWith('video/') ? (
+                              <div className="w-10 h-10 bg-slate-100 border border-slate-200 rounded flex items-center justify-center text-xs">📹</div>
+                            ) : (
+                              <FileText className="w-8 h-8 text-indigo-500 shrink-0" />
+                            )}
+                            <div className="text-left truncate">
+                              <p className="font-bold text-slate-700 truncate max-w-[150px]">{noticeFileName || 'notice_file'}</p>
+                              <p className="text-[9px] text-slate-400 uppercase font-mono">{noticeFileType || 'file'}</p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setNoticePdfUrl('');
+                              setNoticeFileName('');
+                              setNoticeFileType('');
+                            }}
+                            className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg border border-red-100 font-bold text-[10px]"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5 py-1">
+                        <div className="mx-auto w-8 h-8 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-full flex items-center justify-center">
+                          <Upload className="w-4 h-4" />
+                        </div>
+                        <p className="text-xs font-bold text-slate-700">Drag & Drop file or click to select</p>
+                        <p className="text-[9px] text-slate-400">Supports PDF, MP4, CSV, Excel sheets, PNG, JPG (Max 15MB)</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Attachment Image Link (Optional)</label>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Alternative Attachment Image Link (Optional)</label>
                     <input
                       type="url" placeholder="https://example.com/image.jpg"
                       value={noticeImage} onChange={(e) => setNoticeImage(e.target.value)}
@@ -1430,7 +1549,7 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Attachment Video Link (Optional)</label>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Alternative Attachment Video Link (Optional)</label>
                     <input
                       type="url" placeholder="https://example.com/video.mp4"
                       value={noticeVideo} onChange={(e) => setNoticeVideo(e.target.value)}

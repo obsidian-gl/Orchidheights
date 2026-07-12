@@ -109,12 +109,16 @@ export default function HelpDeskSection({
 
   // Filter announcements matching wing & flatNo target criteria
   const filteredNotices = (announcements || []).filter(item => {
-    if (item.targetType === 'all') return true;
-    if (item.targetType === 'wing') {
-      return item.targetWing?.toLowerCase() === wing.toLowerCase();
+    const targetType = item.targetType || item.target || 'all';
+    const targetWing = item.targetWing || item.wing || '';
+    const targetFlat = item.targetFlat || item.flatNo || '';
+
+    if (targetType === 'all') return true;
+    if (targetType === 'wing') {
+      return targetWing.toLowerCase() === wing.toLowerCase();
     }
-    if (item.targetType === 'flat') {
-      return item.targetWing?.toLowerCase() === wing.toLowerCase() && Number(item.targetFlat) === Number(flatNo);
+    if (targetType === 'flat') {
+      return targetWing.toLowerCase() === wing.toLowerCase() && Number(targetFlat) === Number(flatNo);
     }
     return true;
   });
@@ -168,47 +172,80 @@ export default function HelpDeskSection({
               </div>
             ) : (
               <div className="space-y-4">
-                {filteredNotices.map((notice) => (
-                  <div
-                    key={notice.id}
-                    className="bg-slate-50 border border-slate-200 rounded-2xl p-5 hover:border-slate-300 transition shadow-sm space-y-4"
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-3">
-                      <div className="flex items-center space-x-2">
-                        <span className="p-1.5 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-lg shrink-0">
-                          🔔
-                        </span>
-                        <div>
-                          <h4 className="font-display font-black text-sm text-slate-800 uppercase tracking-tight">
-                            {notice.title}
-                          </h4>
-                          <p className="text-[9px] text-slate-400 font-mono flex items-center mt-0.5">
-                            <Calendar className="w-3.5 h-3.5 mr-1" /> Posted on {new Date(notice.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                          </p>
+                {filteredNotices.map((notice) => {
+                  const noticeTitle = notice.title || notice.text?.slice(0, 40) || 'Society Announcement';
+                  const noticeContent = notice.content || notice.text || '';
+                  const noticeCreatedAt = notice.createdAt || notice.timestamp || new Date().toISOString();
+                  const targetType = notice.targetType || notice.target || 'all';
+                  const targetWing = notice.targetWing || notice.wing || '';
+                  const targetFlat = notice.targetFlat || notice.flatNo || '';
+
+                  return (
+                    <div
+                      key={notice.id}
+                      className="bg-slate-50 border border-slate-200 rounded-2xl p-5 hover:border-slate-300 transition shadow-sm space-y-4"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-3">
+                        <div className="flex items-center space-x-2">
+                          <span className="p-1.5 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-lg shrink-0">
+                            🔔
+                          </span>
+                          <div>
+                            <h4 className="font-display font-black text-sm text-slate-800 uppercase tracking-tight">
+                              {noticeTitle}
+                            </h4>
+                            <p className="text-[9px] text-slate-400 font-mono flex items-center mt-0.5">
+                              <Calendar className="w-3.5 h-3.5 mr-1" /> Posted on {new Date(noticeCreatedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            </p>
+                          </div>
                         </div>
+
+                        <span className="text-[9px] font-mono font-bold bg-indigo-100 text-indigo-800 border border-indigo-150 px-2.5 py-0.5 rounded-full uppercase self-start sm:self-center">
+                          {targetType === 'all' ? 'All Residents' : targetType === 'wing' ? `Wing ${targetWing} Only` : `Flat ${targetWing}-${targetFlat}`}
+                        </span>
                       </div>
 
-                      <span className="text-[9px] font-mono font-bold bg-indigo-100 text-indigo-800 border border-indigo-150 px-2.5 py-0.5 rounded-full uppercase self-start sm:self-center">
-                        {notice.targetType === 'all' ? 'All Residents' : notice.targetType === 'wing' ? `Wing ${notice.targetWing} Only` : `Flat ${notice.targetWing}-${notice.targetFlat}`}
-                      </span>
-                    </div>
-
-                    <div className="text-xs text-slate-600 leading-relaxed text-left bg-white p-4 border border-slate-150 rounded-xl">
-                      <p className="whitespace-pre-line">{notice.content}</p>
-                    </div>
-
-                    {notice.mediaUrl && (
-                      <div className="border border-slate-150 rounded-xl overflow-hidden max-w-lg bg-slate-200">
-                        <img
-                          src={notice.mediaUrl}
-                          alt="Notice Attachment"
-                          className="w-full h-auto object-cover max-h-[300px]"
-                          referrerPolicy="no-referrer"
-                        />
+                      <div className="text-xs text-slate-600 leading-relaxed text-left bg-white p-4 border border-slate-150 rounded-xl">
+                        <p className="whitespace-pre-line">{noticeContent}</p>
                       </div>
-                    )}
-                  </div>
-                ))}
+
+                      {notice.mediaUrl && (
+                        <div className="border border-slate-150 rounded-xl overflow-hidden max-w-lg bg-slate-200">
+                          <img
+                            src={notice.mediaUrl}
+                            alt="Notice Attachment"
+                            className="w-full h-auto object-cover max-h-[300px]"
+                            referrerPolicy="no-referrer"
+                          />
+                        </div>
+                      )}
+
+                      {notice.pdfUrl && (
+                        <div className="bg-slate-100 border border-slate-200 p-3 rounded-xl flex items-center justify-between text-xs max-w-lg">
+                          <div className="flex items-center space-x-2 truncate">
+                            {notice.fileType?.startsWith('image/') ? (
+                              <img src={notice.pdfUrl} className="w-10 h-10 object-cover rounded border border-slate-150" />
+                            ) : (
+                              <FileText className="w-8 h-8 text-indigo-500 shrink-0" />
+                            )}
+                            <div className="text-left truncate">
+                              <p className="font-bold text-slate-700 truncate max-w-[150px]">{notice.fileName || 'Attachment_Notice'}</p>
+                              <p className="text-[9px] text-slate-400 uppercase font-mono">{notice.fileType || 'file'}</p>
+                            </div>
+                          </div>
+                          <a
+                            href={notice.pdfUrl}
+                            download={notice.fileName || 'notice_attachment'}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1.5 px-3 rounded-lg text-[10px] flex items-center space-x-1 cursor-pointer transition shadow"
+                          >
+                            <Download className="w-3 h-3" />
+                            <span>Download</span>
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

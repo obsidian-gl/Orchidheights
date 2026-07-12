@@ -605,7 +605,21 @@ export async function getAllAnnouncements(): Promise<Announcement[]> {
  */
 export async function saveAnnouncement(ann: Announcement): Promise<boolean> {
   try {
-    await setDoc(doc(db, 'announcements', ann.id), ann);
+    const cleaned: any = {
+      id: ann.id,
+      target: ann.target || 'all',
+      text: ann.text || '',
+      timestamp: ann.timestamp || new Date().toISOString(),
+      sender: ann.sender || 'Orchid Heights Administration',
+      imageUrl: ann.imageUrl || '',
+      videoUrl: ann.videoUrl || '',
+      pdfUrl: ann.pdfUrl || '',
+      fileName: ann.fileName || '',
+      fileType: ann.fileType || ''
+    };
+    if (ann.wing) cleaned.wing = ann.wing;
+    if (ann.flatNo) cleaned.flatNo = ann.flatNo;
+    await setDoc(doc(db, 'announcements', ann.id), cleaned);
     return true;
   } catch (error) {
     console.error('Failed to save announcement:', error);
@@ -782,13 +796,14 @@ export async function getComplaintsList(): Promise<Complaint[]> {
  * Create a new complaint
  */
 export async function createComplaint(payload: any): Promise<Complaint> {
-  const { id, flatId, title, description, mediaUrl, mediaName, mediaType, status, createdAt, resolvedAt, resolvedBy, processNotes } = payload;
+  const { id, flatId, wing, flatNo, title, description, mediaUrl, mediaName, mediaType, status, createdAt, resolvedAt, resolvedBy, processNotes } = payload;
   const complaintId = id || 'comp_' + Math.random().toString(36).substring(2, 11);
+  const derivedFlatId = flatId || (wing && flatNo ? `${wing}-${flatNo}` : 'B-1104');
   const newComplaint: Complaint = {
     id: complaintId,
-    flatId,
-    title,
-    description,
+    flatId: derivedFlatId,
+    title: title || '',
+    description: description || '',
     mediaUrl: mediaUrl || '',
     mediaName: mediaName || '',
     mediaType: mediaType || '',
@@ -872,19 +887,19 @@ export async function getFinancialReportsList(): Promise<FinancialReport[]> {
  * Create a new financial report (supports upsert)
  */
 export async function createFinancialReport(payload: any): Promise<FinancialReport> {
-  const { id, month, year, title, description, pdfUrl, fileName, fileType, totalExpense, uploadedBy, reportType } = payload;
+  const { id, month, year, title, description, pdfUrl, fileName, fileType, totalExpense, uploadedBy, reportType, createdAt } = payload;
   const reportId = id || 'fin_' + Math.random().toString(36).substring(2, 11);
   const newReport: FinancialReport = {
     id: reportId,
-    month,
-    year: parseInt(year, 10),
-    title,
-    description,
+    month: month || new Date().toLocaleString('default', { month: 'long' }),
+    year: parseInt(year, 10) || new Date().getFullYear(),
+    title: title || '',
+    description: description || '',
     pdfUrl: pdfUrl || '',
     fileName: fileName || '',
     fileType: fileType || '',
     totalExpense: parseFloat(totalExpense) || 0,
-    createdAt: payload.createdAt || new Date().toISOString(),
+    createdAt: createdAt || new Date().toISOString(),
     uploadedBy: uploadedBy || 'Rahul Popat (B-1104 / Admin)',
     reportType: reportType || 'expense'
   };
