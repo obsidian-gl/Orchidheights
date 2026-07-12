@@ -503,14 +503,17 @@ export default function ProfileSection({
               </div>
 
               <div className="flex flex-wrap gap-2">
-                {activeHelpers.map((h) => (
-                  <span
-                    key={h.id}
-                    className="bg-emerald-50 text-emerald-800 border border-emerald-100 rounded-full py-1 px-3 text-[10px] font-bold uppercase flex items-center"
-                  >
-                    👤 {h.name} ({h.role})
-                  </span>
-                ))}
+                {activeHelpers.map((h) => {
+                  const cleanName = h.name.replace(/\s*\([^)]*\)\s*/gi, '').trim();
+                  return (
+                    <span
+                      key={h.id}
+                      className="bg-emerald-50 text-emerald-800 border border-emerald-100 rounded-full py-1 px-3 text-[10px] font-bold uppercase flex items-center"
+                    >
+                      👤 {cleanName} ({h.role || 'Helper'})
+                    </span>
+                  );
+                })}
               </div>
             </div>
           )}

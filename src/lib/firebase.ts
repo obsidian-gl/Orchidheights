@@ -10,12 +10,15 @@ import {
   doc,
   getDoc,
   getDocs,
-  setDoc,
+  setDoc as rawSetDoc,
+  addDoc as rawAddDoc,
+  updateDoc as rawUpdateDoc,
   deleteDoc,
   query,
   limit,
   onSnapshot,
-  where
+  where,
+  orderBy
 } from 'firebase/firestore';
 import { FlatOwner, Visitor, Announcement, DeviceInfo, Complaint, FinancialReport, EssentialContact } from '../types';
 import { getInitialOwners } from '../data/ownersData';
@@ -25,6 +28,53 @@ const app = initializeApp(firebaseConfig);
 
 // Initialize Firestore with the specific database ID from configuration
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+// Deeply sanitize data to remove undefined values before sending to Firestore
+export function sanitizeData<T>(obj: T): T {
+  if (obj === null || obj === undefined) return obj;
+  if (Array.isArray(obj)) {
+    return obj.map(item => sanitizeData(item)) as any;
+  }
+  if (typeof obj === 'object') {
+    const cleaned: any = {};
+    for (const key in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        const val = obj[key];
+        if (val !== undefined) {
+          cleaned[key] = sanitizeData(val);
+        }
+      }
+    }
+    return cleaned;
+  }
+  return obj;
+}
+
+// Export safe, sanitized wrappers for firestore write operations
+export const setDoc = async (ref: any, data: any, options?: any) => {
+  return rawSetDoc(ref, sanitizeData(data), options);
+};
+
+export const addDoc = async (coll: any, data: any) => {
+  return rawAddDoc(coll, sanitizeData(data));
+};
+
+export const updateDoc = async (ref: any, data: any) => {
+  return rawUpdateDoc(ref, sanitizeData(data));
+};
+
+export {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  deleteDoc,
+  query,
+  limit,
+  onSnapshot,
+  where,
+  orderBy
+};
 
 export enum OperationType {
   CREATE = 'create',
@@ -340,6 +390,24 @@ export async function registerVisitor(payload: any): Promise<Visitor> {
       visitorCount: count
     });
 
+    // Write to unified society notification feed
+    await createSocietyNotification({
+      type: 'visitor',
+      title: `🚪 Gate Visitor: ${fullName}`,
+      message: `A visitor (${fullName}, ${guestType}) is requesting entry to Flat ${wing}-${flatNo} for ${reason}.`,
+      wing,
+      flatNo: parseInt(flatNo, 10),
+      metadata: {
+        visitorId,
+        fullName,
+        mobileNumber,
+        guestType,
+        reason,
+        photoUrl: photoUrl || '',
+        visitorCount: count
+      }
+    });
+
     return newVisitor;
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `visitors/${visitorId}`);
@@ -615,7 +683,8 @@ export async function saveAnnouncement(ann: Announcement): Promise<boolean> {
       videoUrl: ann.videoUrl || '',
       pdfUrl: ann.pdfUrl || '',
       fileName: ann.fileName || '',
-      fileType: ann.fileType || ''
+      fileType: ann.fileType || '',
+      attachments: ann.attachments || []
     };
     if (ann.wing) cleaned.wing = ann.wing;
     if (ann.flatNo) cleaned.flatNo = ann.flatNo;
@@ -796,7 +865,7 @@ export async function getComplaintsList(): Promise<Complaint[]> {
  * Create a new complaint
  */
 export async function createComplaint(payload: any): Promise<Complaint> {
-  const { id, flatId, wing, flatNo, title, description, mediaUrl, mediaName, mediaType, status, createdAt, resolvedAt, resolvedBy, processNotes } = payload;
+  const { id, flatId, wing, flatNo, title, description, mediaUrl, mediaName, mediaType, status, createdAt, resolvedAt, resolvedBy, processNotes, attachments } = payload;
   const complaintId = id || 'comp_' + Math.random().toString(36).substring(2, 11);
   const derivedFlatId = flatId || (wing && flatNo ? `${wing}-${flatNo}` : 'B-1104');
   const newComplaint: Complaint = {
@@ -811,7 +880,8 @@ export async function createComplaint(payload: any): Promise<Complaint> {
     createdAt: createdAt || new Date().toISOString(),
     resolvedAt: resolvedAt || null,
     resolvedBy: resolvedBy || null,
-    processNotes: processNotes || ''
+    processNotes: processNotes || '',
+    attachments: attachments || []
   };
 
   try {
@@ -887,7 +957,7 @@ export async function getFinancialReportsList(): Promise<FinancialReport[]> {
  * Create a new financial report (supports upsert)
  */
 export async function createFinancialReport(payload: any): Promise<FinancialReport> {
-  const { id, month, year, title, description, pdfUrl, fileName, fileType, totalExpense, uploadedBy, reportType, createdAt } = payload;
+  const { id, month, year, title, description, pdfUrl, fileName, fileType, totalExpense, uploadedBy, reportType, createdAt, attachments } = payload;
   const reportId = id || 'fin_' + Math.random().toString(36).substring(2, 11);
   const newReport: FinancialReport = {
     id: reportId,
@@ -901,7 +971,8 @@ export async function createFinancialReport(payload: any): Promise<FinancialRepo
     totalExpense: parseFloat(totalExpense) || 0,
     createdAt: createdAt || new Date().toISOString(),
     uploadedBy: uploadedBy || 'Rahul Popat (B-1104 / Admin)',
-    reportType: reportType || 'expense'
+    reportType: reportType || 'expense',
+    attachments: attachments || []
   };
 
   try {
@@ -939,4 +1010,66 @@ export async function getFlatPasswords(): Promise<Record<string, string>> {
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, 'passwords');
   }
+}
+
+/**
+ * Create a new society notification
+ */
+export async function createSocietyNotification(payload: {
+  type: 'notice' | 'financial' | 'complaint' | 'visitor' | 'amenity_request' | 'movie_schedule';
+  title: string;
+  message: string;
+  wing?: string;
+  flatNo?: number;
+  metadata?: any;
+}): Promise<boolean> {
+  const id = 'notif_' + Math.random().toString(36).substring(2, 11);
+  const docRef = doc(db, 'society_notifications', id);
+  const newNotif = {
+    id,
+    type: payload.type,
+    title: payload.title,
+    message: payload.message,
+    wing: payload.wing || '',
+    flatNo: payload.flatNo || 0,
+    timestamp: new Date().toISOString(),
+    metadata: payload.metadata || {}
+  };
+  try {
+    await setDoc(docRef, newNotif);
+    return true;
+  } catch (error) {
+    console.error('Failed to create society notification:', error);
+    return false;
+  }
+}
+
+/**
+ * Real-time subscription to society notifications (supports general feeds & flat-specific visitor alerts)
+ */
+export function subscribeToSocietyNotifications(
+  wing: string,
+  flatNo: number,
+  onUpdate: (notifications: any[]) => void
+) {
+  const notifCol = collection(db, 'society_notifications');
+  return onSnapshot(notifCol, (snapshot) => {
+    const list: any[] = [];
+    snapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+      // Filter: notifications are visible to all owners (all wings/flats) EXCEPT:
+      // visitor notifications which must go ONLY to their specific flat!
+      if (data.type === 'visitor') {
+        if (data.wing.toUpperCase() === wing.toUpperCase() && Number(data.flatNo) === Number(flatNo)) {
+          list.push(data);
+        }
+      } else {
+        // All other notifications are visible to all owners!
+        list.push(data);
+      }
+    });
+    // Sort: newest first
+    list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    onUpdate(list);
+  }, (error) => console.error('Society notifications subscription error:', error));
 }

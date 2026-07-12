@@ -12,8 +12,7 @@ import {
 } from 'lucide-react';
 import { FlatOwner, Announcement, Complaint, FinancialReport, EssentialContact, Visitor, AmenityBooking, GymTheatreLog } from '../types';
 import { api } from '../lib/api';
-import { collection, doc, query, onSnapshot, orderBy, updateDoc, deleteDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, collection, doc, query, onSnapshot, orderBy, updateDoc, deleteDoc } from '../lib/firebase';
 
 interface AdminDashboardProps {
   owners: FlatOwner[];
@@ -107,6 +106,7 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
   const [noticePdfUrl, setNoticePdfUrl] = useState<string>('');
   const [noticeFileName, setNoticeFileName] = useState<string>('');
   const [noticeFileType, setNoticeFileType] = useState<string>('');
+  const [noticeAttachments, setNoticeAttachments] = useState<Array<{ url: string; name: string; type: string }>>([]);
   const [isDraggingNotice, setIsDraggingNotice] = useState<boolean>(false);
   const [noticeSuccess, setNoticeSuccess] = useState<string>('');
 
@@ -124,6 +124,7 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
   const [finPdfUrl, setFinPdfUrl] = useState<string>('');
   const [finFileName, setFinFileName] = useState<string>('');
   const [finFileType, setFinFileType] = useState<string>('');
+  const [finAttachments, setFinAttachments] = useState<Array<{ url: string; name: string; type: string }>>([]);
   const [finExpense, setFinExpense] = useState<string>('');
   const [finSuccess, setFinSuccess] = useState<string>('');
   const [finType, setFinType] = useState<'expense' | 'welfare' | 'statement' | 'other'>('expense');
@@ -512,7 +513,8 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
       videoUrl: noticeVideo.trim(),
       pdfUrl: noticePdfUrl,
       fileName: noticeFileName,
-      fileType: noticeFileType
+      fileType: noticeFileType,
+      attachments: noticeAttachments
     };
 
     if (noticeTarget !== 'all') {
@@ -524,6 +526,16 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
 
     const success = await api.saveAnnouncement(annPayload);
     if (success) {
+      if (!editingAnnouncement) {
+        await api.createSocietyNotification({
+          type: 'notice',
+          title: '📢 New Society Notice Posted',
+          message: noticeText.trim().substring(0, 80) + (noticeText.trim().length > 80 ? '...' : ''),
+          wing: noticeTarget !== 'all' ? noticeWing : undefined,
+          flatNo: noticeTarget === 'flat' ? noticeFlatNo : undefined,
+          metadata: { announcementId: annId }
+        });
+      }
       setNoticeSuccess(editingAnnouncement ? 'Notice updated successfully!' : 'Notice published and broadcasted successfully!');
       setNoticeText('');
       setNoticeImage('');
@@ -531,6 +543,7 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
       setNoticePdfUrl('');
       setNoticeFileName('');
       setNoticeFileType('');
+      setNoticeAttachments([]);
       setEditingAnnouncement(null);
       setShowNoticeForm(false);
       loadAdminData();
@@ -551,7 +564,56 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
     setNoticePdfUrl(ann.pdfUrl || '');
     setNoticeFileName(ann.fileName || '');
     setNoticeFileType(ann.fileType || '');
+    const initialAttachments = [...(ann.attachments || [])];
+    if (ann.pdfUrl && !initialAttachments.some(att => att.url === ann.pdfUrl)) {
+      initialAttachments.push({ url: ann.pdfUrl, name: ann.fileName || 'Attachment.pdf', type: ann.fileType || 'application/pdf' });
+    }
+    setNoticeAttachments(initialAttachments);
     setShowNoticeForm(true);
+  };
+
+  const addNoticeAttachment = (file: File) => {
+    if (!file) return;
+    if (file.size > 15 * 1024 * 1024) {
+      alert('File too large (max 15MB).');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (e.target?.result) {
+        setNoticeAttachments(prev => [
+          ...prev,
+          {
+            url: e.target!.result as string,
+            name: file.name,
+            type: file.type
+          }
+        ]);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const addFinAttachment = (file: File) => {
+    if (!file) return;
+    if (file.size > 15 * 1024 * 1024) {
+      alert('File too large (max 15MB).');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (e.target?.result) {
+        setFinAttachments(prev => [
+          ...prev,
+          {
+            url: e.target!.result as string,
+            name: file.name,
+            type: file.type
+          }
+        ]);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleDeleteNotice = async (id: string) => {
@@ -608,8 +670,9 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
     if (!finTitle.trim()) return;
 
     try {
+      const finId = editingFinance ? editingFinance.id : 'fin_' + Math.random().toString(36).substring(2, 11);
       await api.createFinancialReport({
-        id: editingFinance ? editingFinance.id : undefined,
+        id: finId,
         month: finMonth,
         year: finYear,
         title: finTitle.trim(),
@@ -620,14 +683,26 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
         totalExpense: parseFloat(finExpense) || 0,
         uploadedBy: 'Orchid Heights Admin',
         reportType: finType,
-        createdAt: editingFinance ? editingFinance.createdAt : undefined
+        createdAt: editingFinance ? editingFinance.createdAt : new Date().toISOString(),
+        attachments: finAttachments
       });
+
+      if (!editingFinance) {
+        await api.createSocietyNotification({
+          type: 'financial',
+          title: `💰 New Financial Ledger: ${finTitle.trim()}`,
+          message: `The administration has uploaded the ${finMonth} ${finYear} financial ledger/report.`,
+          metadata: { reportId: finId }
+        });
+      }
+
       setFinSuccess(editingFinance ? 'Ledger entry updated successfully.' : 'Ledger entry added successfully.');
       setFinTitle('');
       setFinDesc('');
       setFinPdfUrl('');
       setFinFileName('');
       setFinFileType('');
+      setFinAttachments([]);
       setFinExpense('');
       setFinType('expense');
       setEditingFinance(null);
@@ -648,6 +723,11 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
     setFinPdfUrl(report.pdfUrl || '');
     setFinFileName(report.fileName || '');
     setFinFileType(report.fileType || '');
+    const initialAttachments = [...(report.attachments || [])];
+    if (report.pdfUrl && !initialAttachments.some(att => att.url === report.pdfUrl)) {
+      initialAttachments.push({ url: report.pdfUrl, name: report.fileName || 'Attachment.pdf', type: report.fileType || 'application/pdf' });
+    }
+    setFinAttachments(initialAttachments);
     setFinExpense(report.totalExpense.toString());
     setFinType(report.reportType || 'expense');
     setShowFinanceForm(true);
@@ -1435,7 +1515,7 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
 
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase">
-                    Upload Announcement Document/Media (PDF, PNG, JPG, MP4, etc.)
+                    Connect Files / Documents / Media (PDFs, Images, Videos, spreadsheets etc.)
                   </label>
                   <div
                     onDragOver={(e) => {
@@ -1446,28 +1526,15 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
                     onDrop={(e) => {
                       e.preventDefault();
                       setIsDraggingNotice(false);
-                      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                        const file = e.dataTransfer.files[0];
-                        if (file.size > 15 * 1024 * 1024) {
-                          alert('File too large (max 15MB).');
-                          return;
+                      if (e.dataTransfer.files) {
+                        for (let i = 0; i < e.dataTransfer.files.length; i++) {
+                          addNoticeAttachment(e.dataTransfer.files[i]);
                         }
-                        const reader = new FileReader();
-                        reader.onload = (event) => {
-                          if (event.target?.result) {
-                            setNoticePdfUrl(event.target.result as string);
-                            setNoticeFileName(file.name);
-                            setNoticeFileType(file.type);
-                          }
-                        };
-                        reader.readAsDataURL(file);
                       }
                     }}
                     className={`border-2 border-dashed rounded-xl p-5 text-center transition-all duration-150 flex flex-col items-center justify-center cursor-pointer ${
                       isDraggingNotice
                         ? 'border-indigo-600 bg-indigo-50/50'
-                        : noticePdfUrl
-                        ? 'border-emerald-300 bg-emerald-50/10'
                         : 'border-slate-200 bg-slate-50 hover:bg-slate-50/80 hover:border-slate-300'
                     }`}
                     onClick={() => document.getElementById('notice-file-input')?.click()}
@@ -1475,68 +1542,62 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
                     <input
                       id="notice-file-input"
                       type="file"
+                      multiple
                       accept=".pdf,.png,.jpg,.jpeg,.mp4,.mov,.avi,.csv,.xlsx,.xls,image/*,video/*,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                       className="hidden"
                       onChange={(e) => {
-                        if (e.target.files && e.target.files[0]) {
-                          const file = e.target.files[0];
-                          if (file.size > 15 * 1024 * 1024) {
-                            alert('File too large (max 15MB).');
-                            return;
+                        if (e.target.files) {
+                          for (let i = 0; i < e.target.files.length; i++) {
+                            addNoticeAttachment(e.target.files[i]);
                           }
-                          const reader = new FileReader();
-                          reader.onload = (event) => {
-                            if (event.target?.result) {
-                              setNoticePdfUrl(event.target.result as string);
-                              setNoticeFileName(file.name);
-                              setNoticeFileType(file.type);
-                            }
-                          };
-                          reader.readAsDataURL(file);
                         }
                       }}
                     />
                     
-                    {noticePdfUrl ? (
-                      <div className="space-y-2 w-full">
-                        <div className="flex items-center justify-between bg-white border border-slate-150 p-2 rounded-lg text-xs">
-                          <div className="flex items-center space-x-2 truncate">
-                            {noticeFileType?.startsWith('image/') ? (
-                              <img src={noticePdfUrl} className="w-10 h-10 object-cover rounded border border-slate-100" />
-                            ) : noticeFileType?.startsWith('video/') ? (
-                              <div className="w-10 h-10 bg-slate-100 border border-slate-200 rounded flex items-center justify-center text-xs">📹</div>
-                            ) : (
-                              <FileText className="w-8 h-8 text-indigo-500 shrink-0" />
-                            )}
-                            <div className="text-left truncate">
-                              <p className="font-bold text-slate-700 truncate max-w-[150px]">{noticeFileName || 'notice_file'}</p>
-                              <p className="text-[9px] text-slate-400 uppercase font-mono">{noticeFileType || 'file'}</p>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setNoticePdfUrl('');
-                              setNoticeFileName('');
-                              setNoticeFileType('');
-                            }}
-                            className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg border border-red-100 font-bold text-[10px]"
-                          >
-                            Remove
-                          </button>
-                        </div>
+                    <div className="space-y-1.5 py-1">
+                      <div className="mx-auto w-8 h-8 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-full flex items-center justify-center">
+                        <Upload className="w-4 h-4" />
                       </div>
-                    ) : (
-                      <div className="space-y-1.5 py-1">
-                        <div className="mx-auto w-8 h-8 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-full flex items-center justify-center">
-                          <Upload className="w-4 h-4" />
-                        </div>
-                        <p className="text-xs font-bold text-slate-700">Drag & Drop file or click to select</p>
-                        <p className="text-[9px] text-slate-400">Supports PDF, MP4, CSV, Excel sheets, PNG, JPG (Max 15MB)</p>
-                      </div>
-                    )}
+                      <p className="text-xs font-bold text-slate-700">Drag & Drop files or click to select multiple</p>
+                      <p className="text-[9px] text-slate-400">Supports PDF, MP4, CSV, Excel sheets, PNG, JPG (Max 15MB each)</p>
+                    </div>
                   </div>
+
+                  {/* Multiple Attachments Selected Preview */}
+                  {noticeAttachments.length > 0 && (
+                    <div className="mt-3 space-y-1.5">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Ready Attachments ({noticeAttachments.length}):</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[220px] overflow-y-auto">
+                        {noticeAttachments.map((att, idx) => (
+                          <div key={idx} className="flex items-center justify-between bg-white border border-slate-200 rounded-xl p-2.5 text-xs shadow-sm">
+                            <div className="flex items-center space-x-2 truncate">
+                              {att.type?.startsWith('image/') ? (
+                                <img src={att.url} className="w-8 h-8 object-cover rounded border border-slate-100" />
+                              ) : att.type?.startsWith('video/') ? (
+                                <div className="w-8 h-8 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded flex items-center justify-center text-[10px]">📹</div>
+                              ) : (
+                                <FileText className="w-6 h-6 text-indigo-500 shrink-0" />
+                              )}
+                              <div className="text-left truncate">
+                                <p className="font-bold text-slate-700 truncate max-w-[120px]">{att.name}</p>
+                                <p className="text-[8px] text-slate-400 uppercase font-mono">{att.type?.split('/')[1] || 'FILE'}</p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setNoticeAttachments(prev => prev.filter((_, i) => i !== idx));
+                              }}
+                              className="text-red-500 hover:text-red-700 p-1.5 hover:bg-red-50 rounded-lg transition"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1609,9 +1670,53 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
                     <p className="text-xs text-slate-400 font-mono">Notice ID: {ann.id}</p>
                     <p className="text-xs text-slate-700 leading-relaxed font-semibold whitespace-pre-line">{ann.text}</p>
                     
-                    {ann.imageUrl && (
-                      <div className="rounded-xl overflow-hidden max-h-[160px] border border-slate-100 bg-slate-50">
-                        <img src={ann.imageUrl} alt="Attached notice media" className="w-full h-full object-cover" />
+                    {/* Render announcement attachments */}
+                    {((ann.attachments && ann.attachments.length > 0) || ann.pdfUrl || ann.imageUrl) && (
+                      <div className="space-y-1.5 mt-2">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Attachments:</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {/* Legacy image url fallback */}
+                          {ann.imageUrl && !(ann.attachments && ann.attachments.some((a: any) => a.url === ann.imageUrl)) && (
+                            <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50 relative group max-h-[140px]">
+                              <img src={ann.imageUrl} alt="Attached legacy image" className="w-full h-full object-cover max-h-[140px]" />
+                            </div>
+                          )}
+
+                          {/* Legacy PDF/document URL fallback */}
+                          {ann.pdfUrl && !(ann.attachments && ann.attachments.some((a: any) => a.url === ann.pdfUrl)) && (
+                            <div className="bg-slate-50 border border-slate-200 p-2 rounded-xl flex items-center justify-between text-xs col-span-full">
+                              <div className="flex items-center space-x-2 truncate">
+                                <FileText className="w-6 h-6 text-indigo-500 shrink-0" />
+                                <span className="font-bold text-slate-700 truncate max-w-[150px] text-[10px]">{ann.fileName || 'document.pdf'}</span>
+                              </div>
+                              <a href={ann.pdfUrl} download={ann.fileName || 'document.pdf'} className="text-indigo-600 hover:underline font-extrabold text-[10px]">Download</a>
+                            </div>
+                          )}
+
+                          {/* Multi attachments list */}
+                          {ann.attachments && ann.attachments.map((att: any, idx: number) => (
+                            <div key={idx} className="bg-slate-50 border border-slate-200 p-2 rounded-xl flex flex-col gap-1.5 shadow-sm">
+                              {att.type?.startsWith('image/') ? (
+                                <div className="rounded border overflow-hidden max-h-[100px] bg-slate-100">
+                                  <img src={att.url} className="w-full object-cover max-h-[100px]" referrerPolicy="no-referrer" />
+                                </div>
+                              ) : att.type?.startsWith('video/') ? (
+                                <video src={att.url} controls className="max-h-[100px] w-full rounded border bg-black" />
+                              ) : (
+                                <div className="flex items-center gap-1.5">
+                                  <FileText className="w-5 h-5 text-indigo-500 shrink-0" />
+                                  <p className="font-bold text-slate-700 truncate text-[10px] max-w-[120px]">{att.name}</p>
+                                </div>
+                              )}
+                              <div className="flex items-center justify-between text-[10px]">
+                                {!att.type?.startsWith('image/') && !att.type?.startsWith('video/') && (
+                                  <span className="text-[8px] text-slate-400 font-mono uppercase">{att.type?.split('/')[1] || 'FILE'}</span>
+                                )}
+                                <a href={att.url} download={att.name || 'Attachment'} className="text-indigo-600 hover:underline font-extrabold text-[10px] ml-auto">Download</a>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1764,22 +1869,46 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
 
                     <p className="text-xs text-slate-600 font-semibold leading-snug">{comp.description}</p>
                     
-                    {comp.mediaUrl && (
-                      <div className="border border-slate-200 rounded-xl p-2.5 bg-slate-50 flex items-center justify-between text-xs">
-                        <div className="flex items-center space-x-2 truncate">
-                          <span className="text-slate-400 shrink-0">📎</span>
-                          <span className="truncate max-w-[120px] font-mono text-[10px] text-slate-500">
-                            {comp.mediaName || 'Attached File'}
-                          </span>
+                    {/* Render complaint multiple attachments */}
+                    {((comp.attachments && comp.attachments.length > 0) || comp.mediaUrl) && (
+                      <div className="space-y-1.5 mt-2">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Attachments ({comp.attachments?.length || 1}):</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {/* Legacy mediaUrl fallback */}
+                          {comp.mediaUrl && !(comp.attachments && comp.attachments.some((a: any) => a.url === comp.mediaUrl)) && (
+                            <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl flex items-center justify-between text-xs col-span-full shadow-sm">
+                              <div className="flex items-center space-x-2 truncate">
+                                <FileText className="w-5 h-5 text-indigo-500 shrink-0" />
+                                <span className="font-bold text-slate-700 truncate max-w-[150px] text-[10px]">{comp.mediaName || 'Attachment'}</span>
+                              </div>
+                              <a href={comp.mediaUrl} download={comp.mediaName || 'Attachment'} className="text-indigo-600 hover:underline font-extrabold text-[10px]">Download</a>
+                            </div>
+                          )}
+
+                          {/* Multi attachments */}
+                          {comp.attachments && comp.attachments.map((att: any, idx: number) => (
+                            <div key={idx} className="bg-slate-50 border border-slate-200 p-2 rounded-xl flex flex-col gap-1.5 shadow-sm">
+                              {att.type?.startsWith('image/') ? (
+                                <div className="rounded border overflow-hidden max-h-[100px] bg-slate-100">
+                                  <img src={att.url} className="w-full object-cover max-h-[100px]" referrerPolicy="no-referrer" />
+                                </div>
+                              ) : att.type?.startsWith('video/') ? (
+                                <video src={att.url} controls className="max-h-[100px] w-full rounded border bg-black" />
+                              ) : (
+                                <div className="flex items-center gap-1.5">
+                                  <FileText className="w-5 h-5 text-indigo-500 shrink-0" />
+                                  <p className="font-bold text-slate-700 truncate text-[10px] max-w-[120px]">{att.name}</p>
+                                </div>
+                              )}
+                              <div className="flex items-center justify-between text-[10px]">
+                                {!att.type?.startsWith('image/') && !att.type?.startsWith('video/') && (
+                                  <span className="text-[8px] text-slate-400 font-mono uppercase">{att.type?.split('/')[1] || 'FILE'}</span>
+                                )}
+                                <a href={att.url} download={att.name || 'Attachment'} className="text-indigo-600 hover:underline font-extrabold text-[10px] ml-auto">Download</a>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                        <a
-                          href={comp.mediaUrl}
-                          download={comp.mediaName || 'file'}
-                          className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-2.5 py-1 rounded-lg text-[9px] flex items-center space-x-1 cursor-pointer transition shrink-0 shadow-sm"
-                        >
-                          <Download className="w-3 h-3" />
-                          <span>Save File</span>
-                        </a>
                       </div>
                     )}
 
@@ -1908,7 +2037,7 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
 
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase">
-                      Upload Document (PDF, PNG, JPG, JPEG, CSV, Excel, etc.)
+                      Connect Files / Statements / Documents (PDF, Excel, Images, CSV, etc.)
                     </label>
                     <div
                       onDragOver={(e) => {
@@ -1919,28 +2048,15 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
                       onDrop={(e) => {
                         e.preventDefault();
                         setIsDraggingFin(false);
-                        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                          const file = e.dataTransfer.files[0];
-                          if (file.size > 8 * 1024 * 1024) {
-                            alert('File too large (max 8MB).');
-                            return;
+                        if (e.dataTransfer.files) {
+                          for (let i = 0; i < e.dataTransfer.files.length; i++) {
+                            addFinAttachment(e.dataTransfer.files[i]);
                           }
-                          const reader = new FileReader();
-                          reader.onload = (event) => {
-                            if (event.target?.result) {
-                              setFinPdfUrl(event.target.result as string);
-                              setFinFileName(file.name);
-                              setFinFileType(file.type);
-                            }
-                          };
-                          reader.readAsDataURL(file);
                         }
                       }}
                       className={`border-2 border-dashed rounded-xl p-5 text-center transition-all duration-150 flex flex-col items-center justify-center cursor-pointer ${
                         isDraggingFin
                           ? 'border-indigo-600 bg-indigo-50/50'
-                          : finPdfUrl
-                          ? 'border-emerald-300 bg-emerald-50/10'
                           : 'border-slate-200 bg-slate-50 hover:bg-slate-50/80 hover:border-slate-300'
                       }`}
                       onClick={() => document.getElementById('fin-file-input')?.click()}
@@ -1948,66 +2064,60 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
                       <input
                         id="fin-file-input"
                         type="file"
+                        multiple
                         accept=".pdf,.png,.jpg,.jpeg,.csv,.xlsx,.xls,image/*,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         className="hidden"
                         onChange={(e) => {
-                          if (e.target.files && e.target.files[0]) {
-                            const file = e.target.files[0];
-                            if (file.size > 8 * 1024 * 1024) {
-                              alert('File too large (max 8MB).');
-                              return;
+                          if (e.target.files) {
+                            for (let i = 0; i < e.target.files.length; i++) {
+                              addFinAttachment(e.target.files[i]);
                             }
-                            const reader = new FileReader();
-                            reader.onload = (event) => {
-                              if (event.target?.result) {
-                                setFinPdfUrl(event.target.result as string);
-                                setFinFileName(file.name);
-                                setFinFileType(file.type);
-                              }
-                            };
-                            reader.readAsDataURL(file);
                           }
                         }}
                       />
                       
-                      {finPdfUrl ? (
-                        <div className="space-y-2 w-full">
-                          <div className="flex items-center justify-between bg-white border border-slate-150 p-2 rounded-lg text-xs">
-                            <div className="flex items-center space-x-2 truncate">
-                              {finFileType?.startsWith('image/') ? (
-                                <img src={finPdfUrl} className="w-10 h-10 object-cover rounded border border-slate-100" />
-                              ) : (
-                                <FileText className="w-8 h-8 text-indigo-500 shrink-0" />
-                              )}
-                              <div className="text-left truncate">
-                                <p className="font-bold text-slate-700 truncate max-w-[150px]">{finFileName || 'statement_file'}</p>
-                                <p className="text-[9px] text-slate-400 uppercase font-mono">{finFileType || 'file'}</p>
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setFinPdfUrl('');
-                                setFinFileName('');
-                                setFinFileType('');
-                              }}
-                              className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg border border-red-100 font-bold text-[10px]"
-                            >
-                              Remove
-                            </button>
-                          </div>
+                      <div className="space-y-1.5 py-1">
+                        <div className="mx-auto w-8 h-8 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-full flex items-center justify-center">
+                          <Upload className="w-4 h-4" />
                         </div>
-                      ) : (
-                        <div className="space-y-1.5 py-1">
-                          <div className="mx-auto w-8 h-8 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-full flex items-center justify-center">
-                            <Upload className="w-4 h-4" />
-                          </div>
-                          <p className="text-xs font-bold text-slate-700">Drag & Drop file or click to select</p>
-                          <p className="text-[9px] text-slate-400">Supports PDF, CSV, Excel sheets, PNG, JPG (Max 8MB)</p>
-                        </div>
-                      )}
+                        <p className="text-xs font-bold text-slate-700">Drag & Drop files or click to select multiple</p>
+                        <p className="text-[9px] text-slate-400">Supports PDF, CSV, Excel sheets, PNG, JPG (Max 15MB each)</p>
+                      </div>
                     </div>
+
+                    {/* Multiple Financial Attachments Selected Preview */}
+                    {finAttachments.length > 0 && (
+                      <div className="mt-3 space-y-1.5">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Ready Attachments ({finAttachments.length}):</p>
+                        <div className="grid grid-cols-1 gap-2 max-h-[180px] overflow-y-auto">
+                          {finAttachments.map((att, idx) => (
+                            <div key={idx} className="flex items-center justify-between bg-white border border-slate-200 rounded-xl p-2.5 text-xs shadow-sm">
+                              <div className="flex items-center space-x-2 truncate">
+                                {att.type?.startsWith('image/') ? (
+                                  <img src={att.url} className="w-8 h-8 object-cover rounded border border-slate-100" />
+                                ) : (
+                                  <FileText className="w-6 h-6 text-indigo-500 shrink-0" />
+                                )}
+                                <div className="text-left truncate">
+                                  <p className="font-bold text-slate-700 truncate max-w-[150px]">{att.name}</p>
+                                  <p className="text-[8px] text-slate-400 uppercase font-mono">{att.type?.split('/')[1] || 'FILE'}</p>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setFinAttachments(prev => prev.filter((_, i) => i !== idx));
+                                }}
+                                className="text-red-500 hover:text-red-700 p-1.5 hover:bg-red-50 rounded-lg transition"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -2142,21 +2252,49 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
                     </div>
                   </div>
 
+                  {/* Render financial report multiple attachments */}
+                  {((report.attachments && report.attachments.length > 0) || report.pdfUrl) && (
+                    <div className="border-t border-slate-150 pt-3 mt-3 space-y-1.5">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Connected Attachments ({report.attachments?.length || 1}):</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left">
+                        {/* Legacy pdfUrl fallback */}
+                        {report.pdfUrl && !(report.attachments && report.attachments.some((a: any) => a.url === report.pdfUrl)) && (
+                          <div className="bg-slate-50 border border-slate-200 p-2 rounded-xl flex items-center justify-between text-xs col-span-full shadow-sm">
+                            <div className="flex items-center space-x-2 truncate">
+                              <FileText className="w-5 h-5 text-indigo-500 shrink-0" />
+                              <span className="font-bold text-slate-700 truncate max-w-[150px] text-[10px]">{report.fileName || 'document.pdf'}</span>
+                            </div>
+                            <a href={report.pdfUrl} download={report.fileName || 'document.pdf'} className="text-indigo-600 hover:underline font-extrabold text-[10px]">Download</a>
+                          </div>
+                        )}
+
+                        {/* Multi attachments list */}
+                        {report.attachments && report.attachments.map((att: any, idx: number) => (
+                          <div key={idx} className="bg-slate-50 border border-slate-200 p-2 rounded-xl flex flex-col gap-1.5 shadow-sm text-left">
+                            {att.type?.startsWith('image/') ? (
+                              <div className="rounded border overflow-hidden max-h-[100px] bg-slate-100">
+                                <img src={att.url} className="w-full object-cover max-h-[100px]" referrerPolicy="no-referrer" />
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5">
+                                <FileText className="w-5 h-5 text-indigo-500 shrink-0" />
+                                <p className="font-bold text-slate-700 truncate text-[10px] max-w-[120px]">{att.name}</p>
+                              </div>
+                            )}
+                            <div className="flex items-center justify-between text-[10px]">
+                              {!att.type?.startsWith('image/') && (
+                                <span className="text-[8px] text-slate-400 font-mono uppercase">{att.type?.split('/')[1] || 'FILE'}</span>
+                              )}
+                              <a href={att.url} download={att.name || 'Attachment'} className="text-indigo-600 hover:underline font-extrabold text-[10px] ml-auto">Download</a>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="border-t border-slate-100 pt-3 flex justify-between items-center text-[10px] text-slate-400 font-mono">
-                    {report.pdfUrl ? (
-                      <a
-                        href={report.pdfUrl}
-                        download={report.fileName || `${report.title}.pdf`}
-                        className="text-indigo-600 hover:underline font-bold flex items-center gap-1 cursor-pointer"
-                      >
-                        <FileText className="w-3.5 h-3.5 text-indigo-500" />
-                        <span className="truncate max-w-[150px]">
-                          Download {report.fileName || 'Document.pdf'}
-                        </span>
-                      </a>
-                    ) : (
-                      <span className="text-slate-400 italic">No document attached</span>
-                    )}
+                    <span className="text-[10px] text-indigo-500 font-bold uppercase tracking-wider">Month: {report.month} {report.year}</span>
                     <span>Uploaded: {new Date(report.createdAt).toLocaleDateString('en-IN')}</span>
                   </div>
                 </div>

@@ -5,10 +5,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Bell, ShieldAlert, Check, X, Users, Car, Phone, Lock, Eye, EyeOff, ClipboardList, AlertCircle, Trash2, Plus, Clock, RefreshCw, Megaphone, FileText, Download, Search, Wrench, CheckCircle, Upload, Calendar, Home, User, Dumbbell, Film, Sparkles, BookOpen, MapPin, CheckSquare, PlusCircle, ChevronRight, ArrowLeft } from 'lucide-react';
-import { FlatOwner, Visitor, Vehicle, UserSession, Announcement, AmenityBooking, GymTheatreLog, DailyHelper, AbsenceLog } from '../types';
+import { FlatOwner, Visitor, Vehicle, UserSession, Announcement, AmenityBooking, GymTheatreLog, DailyHelper, AbsenceLog, EssentialContact } from '../types';
 import { api, detectServerEnvironment } from '../lib/api';
-import { collection, doc, setDoc, addDoc, getDocs, onSnapshot, updateDoc, deleteDoc, query, where, orderBy } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, collection, doc, setDoc, addDoc, getDocs, onSnapshot, updateDoc, deleteDoc, query, where, orderBy } from '../lib/firebase';
 
 import VisitorsSection from './resident/VisitorsSection';
 import DirectorySection from './resident/DirectorySection';
@@ -17,6 +16,7 @@ import LocalServicesSection from './resident/LocalServicesSection';
 import HelpDeskSection from './resident/HelpDeskSection';
 import NoticeSection from './resident/NoticeSection';
 import ProfileSection from './resident/ProfileSection';
+import BuildingServicesSection from './resident/BuildingServicesSection';
 
 let alarmIntervalId: any = null;
 let alarmAudioContext: AudioContext | null = null;
@@ -224,6 +224,16 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   const [gymTheatreLogs, setGymTheatreLogs] = useState<GymTheatreLog[]>([]);
   const [dailyHelpers, setDailyHelpers] = useState<DailyHelper[]>([]);
   const [absenceLogs, setAbsenceLogs] = useState<AbsenceLog[]>([]);
+  const [essentialContacts, setEssentialContacts] = useState<EssentialContact[]>([]);
+  const [societyNotifications, setSocietyNotifications] = useState<any[]>([]);
+  const [dismissedNotifIds, setDismissedNotifIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('orchid_dismissed_notifs');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
   // Sub-tabs state inside Resident Portal
   const [residentTab, setResidentTab] = useState<'home' | 'notices' | 'complaints' | 'financials' | 'contacts'>('home');
@@ -287,11 +297,45 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
       setAbsenceLogs(list);
     }, (error) => console.error('Error listening to absence logs:', error));
 
+    // 5. Essential Contacts
+    const qContacts = collection(db, 'essential_contacts');
+    const unsubContacts = onSnapshot(qContacts, async (snapshot) => {
+      if (snapshot.empty) {
+        const defaults: EssentialContact[] = [
+          { id: 'ec_1', name: 'Ramesh Patel', category: 'Plumber', phone: '9825012345', active: true },
+          { id: 'ec_2', name: 'Kishore Parmar', category: 'Electrician', phone: '9898022334', active: true },
+          { id: 'ec_3', name: 'Gate 1 Guard Duty', category: 'Security', phone: '9426055667', active: true },
+          { id: 'ec_4', name: 'Orchid Heights Manager', category: 'Manager', phone: '9712033445', active: true },
+          { id: 'ec_5', name: 'Manish Mali', category: 'Gardener', phone: '9033099881', active: true }
+        ];
+        for (const c of defaults) {
+          try {
+            await setDoc(doc(db, 'essential_contacts', c.id), c);
+          } catch (e) {
+            console.error('Seeding essential contacts error:', e);
+          }
+        }
+      } else {
+        const list: EssentialContact[] = [];
+        snapshot.forEach((docSnap) => {
+          list.push({ id: docSnap.id, ...docSnap.data() } as EssentialContact);
+        });
+        setEssentialContacts(list);
+      }
+    }, (error) => console.error('Error listening to essential contacts:', error));
+
+    // 6. Society Notifications
+    const unsubSocietyNotifs = api.subscribeSocietyNotifications(wing, flatNo, (list) => {
+      setSocietyNotifications(list);
+    });
+
     return () => {
       unsubBookings();
       unsubLogs();
       unsubHelpers();
       unsubAbsences();
+      unsubContacts();
+      unsubSocietyNotifs();
     };
   }, []);
 
@@ -394,6 +438,12 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
     }
   };
 
+  const handleDismissNotification = (id: string) => {
+    const updated = [...dismissedNotifIds, id];
+    setDismissedNotifIds(updated);
+    localStorage.setItem('orchid_dismissed_notifs', JSON.stringify(updated));
+  };
+
   // Vote or Toggle support for a function booking
   const handleVoteAmenityBooking = async (bookingId: string) => {
     const currentFlat = `${wing}-${flatNo}`;
@@ -454,17 +504,30 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
     setShowExitPhotoModal(true);
   };
 
-  // Handle Photo input conversion
+  // Handle Photo input conversion with 15-minute file age verification
   const handleExitPhotoChange = (file: File) => {
     if (!file) return;
     if (file.size > 8 * 1024 * 1024) {
       setGymTheatreError('Exit Photo size exceeds 8MB maximum limit.');
       return;
     }
+
+    // Verify 15-minute maximum age of the photo to ensure it is live/recent
+    const fileAgeMs = Date.now() - file.lastModified;
+    const fileAgeMinutes = fileAgeMs / 60000;
+    if (fileAgeMinutes > 15) {
+      setGymTheatreError('Security Audit: The exit photo must be a live image captured within the last 15 minutes. Please snap a new photo.');
+      setExitPhotoTimeError(true);
+      setExitPhotoBase64('');
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = (e) => {
       if (e.target?.result) {
         setExitPhotoBase64(e.target.result as string);
+        setExitPhotoTimeError(false);
+        setGymTheatreError('');
       }
     };
     reader.readAsDataURL(file);
@@ -474,7 +537,7 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   const handleConfirmCheckOut = async () => {
     if (!activeCheckInLog) return;
     if (!exitPhotoBase64) {
-      setGymTheatreError('An exit checkout selfie snapshot is required.');
+      setGymTheatreError('An exit checkout selfie snapshot is required to proceed.');
       return;
     }
 
@@ -482,14 +545,7 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
     const now = new Date();
     const nowTime = now.getTime();
     const elapsedMs = nowTime - checkInTime;
-    const elapsedMinutes = Math.floor(elapsedMs / 60000);
-
-    // Mandate recapturing exit photo if elapsed session exceeds 15 minutes!
-    if (elapsedMinutes > 15) {
-      setExitPhotoTimeError(true);
-      setGymTheatreError('Your gym/theatre check-in time was more than 15 minutes ago. For security regulations, you must capture a brand new real-time checkout photo.');
-      return;
-    }
+    const elapsedMinutes = Math.max(1, Math.floor(elapsedMs / 60000));
 
     try {
       await updateDoc(doc(db, 'gym_theatre_logs', activeCheckInLog.id), {
@@ -984,6 +1040,7 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   const firstName = fullName.split(' ')[0] || 'Rahul';
   const nameGu = myOwnerData?.nameGu || 'રાહુલ જશવંતરાય પોપટ';
   const flatStr = `Flat ${wing}-${flatNo}`;
+  const activeSocietyNotifs = societyNotifications.filter((n) => !dismissedNotifIds.includes(n.id));
 
   return (
     <div className="space-y-6 text-slate-800 pb-24 text-left">
@@ -1046,9 +1103,9 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                   title="Open Notifications Panel"
                 >
                   <Bell className="w-4.5 h-4.5" />
-                  {(activePoll.length + activeSosAlerts.length) > 0 && (
+                  {(societyNotifications.filter((n) => !dismissedNotifIds.includes(n.id)).length + activeSosAlerts.length) > 0 && (
                     <span className="absolute -top-1 -right-1 w-4.5 h-4.5 bg-[#7C3AED] text-white text-[8px] font-black rounded-full flex items-center justify-center shadow animate-bounce">
-                      {activePoll.length + activeSosAlerts.length}
+                      {societyNotifications.filter((n) => !dismissedNotifIds.includes(n.id)).length + activeSosAlerts.length}
                     </span>
                   )}
                 </button>
@@ -1306,6 +1363,27 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                 </div>
               </div>
 
+              {/* Block 7: Building Services */}
+              <div
+                onClick={() => setActiveSubSection('buildingservices')}
+                className="bg-white rounded-3xl p-5 border border-slate-200/60 shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group"
+              >
+                <div className="flex items-center justify-between w-full">
+                  <div className="w-11 h-11 rounded-full bg-[#4F46E5] text-white flex items-center justify-center shrink-0 shadow-sm">
+                    <Wrench className="w-5 h-5" />
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />
+                </div>
+                <div className="mt-4">
+                  <h4 className="font-display font-black text-slate-800 text-sm tracking-tight leading-snug">
+                    Building Services
+                  </h4>
+                  <p className="text-[10px] text-slate-400 font-medium leading-normal mt-1">
+                    Lift, Plumber, Electrician etc.
+                  </p>
+                </div>
+              </div>
+
             </div>
           </div>
         ) : (
@@ -1451,6 +1529,10 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                 handleFileChange={handleFileChange}
               />
             )}
+
+            {activeSubSection === 'buildingservices' && (
+              <BuildingServicesSection contacts={essentialContacts} />
+            )}
           </div>
         )
       ) : (
@@ -1559,7 +1641,7 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
 
             {/* List of active items */}
             <div className="p-5 overflow-y-auto space-y-4">
-              {activeSosAlerts.length === 0 && activePoll.length === 0 && announcements.length === 0 ? (
+              {activeSosAlerts.length === 0 && activePoll.length === 0 && announcements.length === 0 && activeSocietyNotifs.length === 0 ? (
                 <div className="text-center py-12 space-y-3">
                   <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto text-slate-300">
                     <Bell className="w-6 h-6" />
@@ -1611,6 +1693,49 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                       </div>
                     </div>
                   ))}
+
+                  {/* Real-time Society Notifications */}
+                  {activeSocietyNotifs.map((notif) => {
+                    const iconColorClass = 
+                      notif.type === 'visitor' ? 'text-amber-500 bg-amber-50' :
+                      notif.type === 'financial' ? 'text-emerald-500 bg-emerald-50' :
+                      notif.type === 'complaint' ? 'text-rose-500 bg-rose-50' :
+                      notif.type === 'amenity_request' ? 'text-purple-500 bg-purple-50' :
+                      notif.type === 'movie_schedule' ? 'text-indigo-500 bg-indigo-50' :
+                      'text-blue-500 bg-blue-50';
+                    return (
+                      <div key={notif.id} className="bg-slate-50 border border-slate-100 p-4 rounded-2xl flex items-start space-x-3 text-left relative group">
+                        <div className="flex-1 flex items-start space-x-3">
+                          <span className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 mt-0.5 font-bold ${iconColorClass}`}>
+                            {notif.type === 'visitor' && <Users className="w-4 h-4" />}
+                            {notif.type === 'financial' && <FileText className="w-4 h-4" />}
+                            {notif.type === 'complaint' && <AlertCircle className="w-4 h-4" />}
+                            {notif.type === 'amenity_request' && <Calendar className="w-4 h-4" />}
+                            {notif.type === 'movie_schedule' && <Film className="w-4 h-4" />}
+                            {notif.type === 'notice' && <Megaphone className="w-4 h-4" />}
+                          </span>
+                          <div className="space-y-1 w-full pr-6">
+                            <p className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                              {notif.title}
+                            </p>
+                            <p className="text-xs text-slate-500 leading-relaxed whitespace-pre-line">
+                              {notif.message}
+                            </p>
+                            <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                              {new Date(notif.timestamp).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleDismissNotification(notif.id)}
+                          className="absolute top-3 right-3 p-1 hover:bg-slate-200/60 text-slate-400 hover:text-slate-600 rounded-lg transition cursor-pointer select-none"
+                          title="Dismiss notification"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
 
                   {/* Recent Society Announcements */}
                   {announcements.slice(0, 5).map((notice) => {

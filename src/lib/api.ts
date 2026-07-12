@@ -35,7 +35,9 @@ import {
   getFinancialReportsList,
   createFinancialReport,
   deleteFinancialReport,
-  getFlatPasswords
+  getFlatPasswords,
+  createSocietyNotification,
+  subscribeToSocietyNotifications
 } from './firebase';
 
 export async function detectServerEnvironment(): Promise<boolean> {
@@ -236,5 +238,25 @@ export const api = {
   // Get Flat Passwords
   getFlatPasswords: async (): Promise<Record<string, string>> => {
     return getFlatPasswords();
+  },
+
+  // Society Notifications
+  createSocietyNotification: async (payload: {
+    type: 'notice' | 'financial' | 'complaint' | 'visitor' | 'amenity_request' | 'movie_schedule';
+    title: string;
+    message: string;
+    wing?: string;
+    flatNo?: number;
+    metadata?: any;
+  }): Promise<boolean> => {
+    return createSocietyNotification(payload);
+  },
+
+  subscribeSocietyNotifications: (
+    wing: string,
+    flatNo: number,
+    onUpdate: (notifications: any[]) => void
+  ) => {
+    return subscribeToSocietyNotifications(wing, flatNo, onUpdate);
   }
 };

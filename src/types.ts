@@ -76,6 +76,7 @@ export interface Announcement {
   pdfUrl?: string;
   fileName?: string;
   fileType?: string;
+  attachments?: Array<{ url: string; name: string; type: string }>;
 }
 
 export interface Complaint {
@@ -91,6 +92,7 @@ export interface Complaint {
   resolvedAt?: string;
   resolvedBy?: string;
   processNotes?: string;
+  attachments?: Array<{ url: string; name: string; type: string }>;
 }
 
 export interface FinancialReport {
@@ -106,6 +108,7 @@ export interface FinancialReport {
   createdAt: string;
   uploadedBy: string;
   reportType?: 'expense' | 'welfare' | 'statement' | 'other';
+  attachments?: Array<{ url: string; name: string; type: string }>;
 }
 
 export interface EssentialContact {

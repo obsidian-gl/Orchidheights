@@ -62,6 +62,29 @@ export default function HelpDeskSection({
   );
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [compAttachments, setCompAttachments] = useState<Array<{ url: string; name: string; type: string }>>([]);
+
+  const addCompAttachment = (file: File) => {
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) {
+      setCompError('File is too large. Max size allowed is 8MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (e.target?.result) {
+        setCompAttachments(prev => [
+          ...prev,
+          {
+            url: e.target!.result as string,
+            name: file.name,
+            type: file.type
+          }
+        ]);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleCreateComplaint = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,7 +102,8 @@ export default function HelpDeskSection({
         title: compTitle.trim(),
         description: compDesc.trim(),
         wing,
-        flatNo
+        flatNo,
+        attachments: compAttachments
       };
 
       if (compMedia) {
@@ -90,12 +114,21 @@ export default function HelpDeskSection({
 
       const res = await api.createComplaint(payload);
       if (res && res.id) {
+        // Dispatch general notification to society_notifications collection
+        await api.createSocietyNotification({
+          type: 'complaint',
+          title: `📝 Ticket Raised: Flat ${wing}-${flatNo}`,
+          message: `New ticket: "${compTitle.trim()}". Description: ${compDesc.trim().substring(0, 80)}`,
+          metadata: { complaintId: res.id }
+        });
+
         setCompSuccess('Complaint filed successfully!');
         setCompTitle('');
         setCompDesc('');
         setCompMedia('');
         setCompMediaName('');
         setCompMediaType('');
+        setCompAttachments([]);
         onRefreshComplaints();
       } else {
         setCompError('Failed to file complaint.');
@@ -209,38 +242,79 @@ export default function HelpDeskSection({
                         <p className="whitespace-pre-line">{noticeContent}</p>
                       </div>
 
-                      {notice.mediaUrl && (
-                        <div className="border border-slate-150 rounded-xl overflow-hidden max-w-lg bg-slate-200">
-                          <img
-                            src={notice.mediaUrl}
-                            alt="Notice Attachment"
-                            className="w-full h-auto object-cover max-h-[300px]"
-                            referrerPolicy="no-referrer"
-                          />
-                        </div>
-                      )}
-
-                      {notice.pdfUrl && (
-                        <div className="bg-slate-100 border border-slate-200 p-3 rounded-xl flex items-center justify-between text-xs max-w-lg">
-                          <div className="flex items-center space-x-2 truncate">
-                            {notice.fileType?.startsWith('image/') ? (
-                              <img src={notice.pdfUrl} className="w-10 h-10 object-cover rounded border border-slate-150" />
-                            ) : (
-                              <FileText className="w-8 h-8 text-indigo-500 shrink-0" />
+                      {/* Render all multi-file notice attachments for residents */}
+                      {((notice.attachments && notice.attachments.length > 0) || notice.mediaUrl || notice.pdfUrl) && (
+                        <div className="space-y-1.5 mt-2 text-left">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Attachments ({notice.attachments?.length || 1}):</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl">
+                            {/* Legacy mediaUrl image fallback */}
+                            {notice.mediaUrl && !(notice.attachments && notice.attachments.some((a: any) => a.url === notice.mediaUrl)) && (
+                              <div className="border border-slate-150 rounded-xl overflow-hidden bg-slate-200 col-span-full">
+                                <img
+                                  src={notice.mediaUrl}
+                                  alt="Notice Attachment"
+                                  className="w-full h-auto object-cover max-h-[220px]"
+                                  referrerPolicy="no-referrer"
+                                />
+                              </div>
                             )}
-                            <div className="text-left truncate">
-                              <p className="font-bold text-slate-700 truncate max-w-[150px]">{notice.fileName || 'Attachment_Notice'}</p>
-                              <p className="text-[9px] text-slate-400 uppercase font-mono">{notice.fileType || 'file'}</p>
-                            </div>
+
+                            {/* Legacy pdfUrl fallback */}
+                            {notice.pdfUrl && !(notice.attachments && notice.attachments.some((a: any) => a.url === notice.pdfUrl)) && (
+                              <div className="bg-slate-50 border border-slate-200 p-3 rounded-xl flex items-center justify-between text-xs col-span-full shadow-sm">
+                                <div className="flex items-center space-x-2 truncate">
+                                  {notice.fileType?.startsWith('image/') ? (
+                                    <img src={notice.pdfUrl} className="w-10 h-10 object-cover rounded border border-slate-150" />
+                                  ) : (
+                                    <FileText className="w-8 h-8 text-indigo-500 shrink-0" />
+                                  )}
+                                  <div className="text-left truncate">
+                                    <p className="font-bold text-slate-700 truncate max-w-[150px]">{notice.fileName || 'Attachment_Notice'}</p>
+                                    <p className="text-[9px] text-slate-400 uppercase font-mono">{notice.fileType || 'file'}</p>
+                                  </div>
+                                </div>
+                                <a
+                                  href={notice.pdfUrl}
+                                  download={notice.fileName || 'notice_attachment'}
+                                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1.5 px-3 rounded-lg text-[10px] flex items-center space-x-1 cursor-pointer transition shadow"
+                                >
+                                  <Download className="w-3 h-3" />
+                                  <span>Download</span>
+                                </a>
+                              </div>
+                            )}
+
+                            {/* Multi attachments list */}
+                            {notice.attachments && notice.attachments.map((att: any, idx: number) => (
+                              <div key={idx} className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl flex flex-col gap-2 shadow-sm text-left">
+                                {att.type?.startsWith('image/') ? (
+                                  <div className="rounded border overflow-hidden max-h-[140px] bg-slate-100">
+                                    <img src={att.url} className="w-full object-cover max-h-[140px]" referrerPolicy="no-referrer" />
+                                  </div>
+                                ) : att.type?.startsWith('video/') ? (
+                                  <video src={att.url} controls className="max-h-[140px] w-full rounded border bg-black" />
+                                ) : (
+                                  <div className="flex items-center gap-1.5">
+                                    <FileText className="w-6 h-6 text-indigo-500 shrink-0" />
+                                    <p className="font-bold text-slate-700 truncate text-[11px] max-w-[150px]">{att.name}</p>
+                                  </div>
+                                )}
+                                <div className="flex items-center justify-between text-[10px]">
+                                  {!att.type?.startsWith('image/') && !att.type?.startsWith('video/') && (
+                                    <span className="text-[8px] text-slate-400 font-mono uppercase">{att.type?.split('/')[1] || 'FILE'}</span>
+                                  )}
+                                  <a
+                                    href={att.url}
+                                    download={att.name || 'Attachment'}
+                                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1 px-2.5 rounded text-[10px] flex items-center space-x-1 cursor-pointer ml-auto transition shadow-sm"
+                                  >
+                                    <Download className="w-3 h-3" />
+                                    <span>Download</span>
+                                  </a>
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                          <a
-                            href={notice.pdfUrl}
-                            download={notice.fileName || 'notice_attachment'}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1.5 px-3 rounded-lg text-[10px] flex items-center space-x-1 cursor-pointer transition shadow"
-                          >
-                            <Download className="w-3 h-3" />
-                            <span>Download</span>
-                          </a>
                         </div>
                       )}
                     </div>
@@ -291,7 +365,9 @@ export default function HelpDeskSection({
 
                 {/* Drag and Drop Upload Box */}
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase">Attachment (Photo, PDF, or Document)</label>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase">
+                    Connect Files (Photos, Videos, PDFs, etc.)
+                  </label>
                   <div
                     onClick={() => document.getElementById('comp-file-picker')?.click()}
                     onDragOver={(e) => {
@@ -302,14 +378,14 @@ export default function HelpDeskSection({
                     onDrop={(e) => {
                       e.preventDefault();
                       setIsDragging(false);
-                      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                        handleFileChange(e.dataTransfer.files[0]);
+                      if (e.dataTransfer.files) {
+                        for (let i = 0; i < e.dataTransfer.files.length; i++) {
+                          addCompAttachment(e.dataTransfer.files[i]);
+                        }
                       }
                     }}
                     className={`border-2 border-dashed rounded-xl p-5 text-center transition cursor-pointer ${
-                      compMedia
-                        ? 'border-emerald-300 bg-emerald-50/10'
-                        : isDragging
+                      isDragging
                         ? 'border-indigo-500 bg-indigo-50/30'
                         : 'border-slate-200 bg-white hover:bg-slate-50'
                     }`}
@@ -317,40 +393,48 @@ export default function HelpDeskSection({
                     <input
                       id="comp-file-picker"
                       type="file"
-                      accept="image/*,application/pdf"
+                      multiple
+                      accept="image/*,video/*,application/pdf,text/*"
                       className="hidden"
                       onChange={(e) => {
-                        if (e.target.files && e.target.files[0]) {
-                          handleFileChange(e.target.files[0]);
+                        if (e.target.files) {
+                          for (let i = 0; i < e.target.files.length; i++) {
+                            addCompAttachment(e.target.files[i]);
+                          }
                         }
                       }}
                     />
 
-                    {compMedia ? (
-                      <div className="space-y-1">
-                        <p className="font-bold text-emerald-600">✓ Attachment Ready</p>
-                        <p className="text-[10px] text-slate-500 font-mono truncate">{compMediaName}</p>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setCompMedia('');
-                            setCompMediaName('');
-                            setCompMediaType('');
-                          }}
-                          className="text-[10px] text-red-500 hover:underline font-bold"
-                        >
-                          Remove file
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="space-y-1 text-slate-500">
-                        <Upload className="w-5 h-5 mx-auto text-slate-400" />
-                        <p className="text-xs font-bold text-slate-700">Drag & Drop or Click to Upload</p>
-                        <p className="text-[9px] text-slate-400">PDF, PNG, JPG, JPEG accepted</p>
-                      </div>
-                    )}
+                    <div className="space-y-1 text-slate-500">
+                      <Upload className="w-5 h-5 mx-auto text-slate-400" />
+                      <p className="text-xs font-bold text-slate-700">Drag & Drop or Click to Upload Multiple</p>
+                      <p className="text-[9px] text-slate-400">PDF, PNG, JPG, MP4, JPEG accepted</p>
+                    </div>
                   </div>
+
+                  {/* Multiple Attachments Preview List */}
+                  {compAttachments.length > 0 && (
+                    <div className="mt-3 space-y-1.5">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">Selected Attachments ({compAttachments.length}):</p>
+                      <div className="space-y-1 max-h-[150px] overflow-y-auto">
+                        {compAttachments.map((att, index) => (
+                          <div key={index} className="flex items-center justify-between bg-white border border-slate-200 rounded-lg p-2 text-[11px] font-sans">
+                            <span className="truncate max-w-[80%] text-slate-600 font-medium">{att.name}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCompAttachments(prev => prev.filter((_, i) => i !== index));
+                              }}
+                              className="text-red-500 hover:text-red-700 font-bold"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <button
@@ -403,16 +487,50 @@ export default function HelpDeskSection({
                           {item.description}
                         </p>
 
-                        {item.mediaUrl && (
-                          <div className="flex items-center space-x-2 bg-white px-3 py-1.5 rounded-lg border border-slate-150 w-fit max-w-full">
-                            <span className="text-[10px] text-slate-500 truncate block max-w-[200px] font-mono">📎 {item.mediaName || 'attachment'}</span>
-                            <a
-                              href={item.mediaUrl}
-                              download={item.mediaName || 'complaint_media'}
-                              className="text-[10px] text-indigo-600 hover:underline font-bold shrink-0"
-                            >
-                              Download
-                            </a>
+                        {/* Attachments rendering */}
+                        {((item.attachments && item.attachments.length > 0) || item.mediaUrl) && (
+                          <div className="space-y-2 text-left">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Connected Attachments:</p>
+                            <div className="flex flex-wrap gap-2.5">
+                              {/* Legacy single attachment fallback */}
+                              {item.mediaUrl && !(item.attachments && item.attachments.some((a: any) => a.url === item.mediaUrl)) && (
+                                <div className="bg-white border border-slate-200 p-2.5 rounded-xl flex items-center gap-2 max-w-xs shadow-sm">
+                                  {item.mediaType?.startsWith('image/') ? (
+                                    <img src={item.mediaUrl} className="w-9 h-9 object-cover rounded border border-slate-100" referrerPolicy="no-referrer" />
+                                  ) : (
+                                    <FileText className="w-5 h-5 text-indigo-500 shrink-0" />
+                                  )}
+                                  <div className="min-w-0 flex-1 text-[10px]">
+                                    <p className="font-bold text-slate-700 truncate">{item.mediaName || 'Attachment'}</p>
+                                    <a href={item.mediaUrl} download={item.mediaName || 'Attachment'} className="text-indigo-600 hover:underline font-extrabold">Download</a>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Multi-attachments support */}
+                              {item.attachments && item.attachments.map((att: any, idx: number) => (
+                                <div key={idx} className="bg-white border border-slate-200 p-2.5 rounded-xl flex flex-col gap-1.5 max-w-xs shadow-sm">
+                                  {att.type?.startsWith('image/') ? (
+                                    <div className="relative group rounded border overflow-hidden max-h-[140px] max-w-[200px]">
+                                      <img src={att.url} className="w-full object-cover max-h-[140px]" referrerPolicy="no-referrer" />
+                                    </div>
+                                  ) : att.type?.startsWith('video/') ? (
+                                    <video src={att.url} controls className="max-h-[140px] max-w-[200px] rounded border" />
+                                  ) : (
+                                    <div className="flex items-center gap-2">
+                                      <FileText className="w-5 h-5 text-indigo-500 shrink-0" />
+                                      <p className="font-bold text-slate-700 truncate max-w-[120px] text-[10px]">{att.name}</p>
+                                    </div>
+                                  )}
+                                  <div className="flex items-center justify-between text-[10px]">
+                                    {!att.type?.startsWith('image/') && !att.type?.startsWith('video/') && (
+                                      <span className="text-[8px] text-slate-400 font-mono uppercase">{att.type?.split('/')[1] || 'FILE'}</span>
+                                    )}
+                                    <a href={att.url} download={att.name || 'Attachment'} className="text-indigo-600 hover:underline font-extrabold ml-auto">Download</a>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         )}
 
@@ -460,17 +578,47 @@ export default function HelpDeskSection({
                       )}
                     </div>
 
-                    {report.mediaUrl && (
-                      <div className="flex items-center justify-between border-t border-slate-100 pt-3 mt-3">
-                        <span className="text-[10px] font-mono text-slate-400 truncate max-w-[200px]">📎 {report.mediaName || 'statement'}</span>
-                        <a
-                          href={report.mediaUrl}
-                          download={report.mediaName || 'report'}
-                          className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1.5 px-3.5 rounded-lg text-[10px] flex items-center space-x-1 shadow-sm transition-all cursor-pointer"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>Download File</span>
-                        </a>
+                    {/* Multi attachments list for financials */}
+                    {((report.attachments && report.attachments.length > 0) || report.mediaUrl) && (
+                      <div className="border-t border-slate-100 pt-3 mt-3 space-y-1.5">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Connected Attachments ({report.attachments?.length || 1}):</p>
+                        <div className="grid grid-cols-1 gap-2">
+                          {/* Legacy mediaUrl fallback */}
+                          {report.mediaUrl && !(report.attachments && report.attachments.some((a: any) => a.url === report.mediaUrl)) && (
+                            <div className="bg-white border border-slate-200 p-2 rounded-xl flex items-center justify-between text-xs shadow-sm">
+                              <span className="text-[10px] font-mono text-slate-500 truncate max-w-[150px]">📎 {report.mediaName || 'statement'}</span>
+                              <a
+                                href={report.mediaUrl}
+                                download={report.mediaName || 'report'}
+                                className="text-indigo-600 hover:underline font-extrabold text-[10px] cursor-pointer"
+                              >
+                                Download
+                              </a>
+                            </div>
+                          )}
+
+                          {/* Multi attachments list */}
+                          {report.attachments && report.attachments.map((att: any, idx: number) => (
+                            <div key={idx} className="bg-white border border-slate-200 p-2 rounded-xl flex flex-col gap-1 shadow-sm text-left">
+                              {att.type?.startsWith('image/') ? (
+                                <div className="rounded border overflow-hidden max-h-[80px] bg-slate-50">
+                                  <img src={att.url} className="w-full object-cover max-h-[80px]" referrerPolicy="no-referrer" />
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1.5">
+                                  <FileText className="w-4 h-4 text-indigo-500 shrink-0" />
+                                  <p className="font-bold text-slate-700 truncate text-[10px] max-w-[150px]">{att.name}</p>
+                                </div>
+                              )}
+                              <div className="flex items-center justify-between text-[10px] mt-1">
+                                {!att.type?.startsWith('image/') && (
+                                  <span className="text-[8px] text-slate-400 font-mono uppercase">{att.type?.split('/')[1] || 'FILE'}</span>
+                                )}
+                                <a href={att.url} download={att.name || 'Attachment'} className="text-indigo-600 hover:underline font-extrabold text-[10px] ml-auto">Download</a>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
