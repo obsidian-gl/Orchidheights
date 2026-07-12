@@ -1,6 +1,22 @@
-import React, { useState } from 'react';
-import { FileText, ClipboardList, AlertCircle, Plus, Upload, X, Download, MessageSquare, Megaphone, Bell, Calendar } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { 
+  FileText, 
+  ClipboardList, 
+  AlertCircle, 
+  Plus, 
+  Upload, 
+  X, 
+  Download, 
+  MessageSquare, 
+  Megaphone, 
+  Bell, 
+  Calendar,
+  ChevronRight,
+  ArrowLeft,
+  Check
+} from 'lucide-react';
 import { api } from '../../lib/api';
+import ChunkedMedia from '../ChunkedMedia';
 
 interface HelpDeskSectionProps {
   wing: string;
@@ -29,6 +45,10 @@ interface HelpDeskSectionProps {
   compError: string;
   setCompError: (text: string) => void;
   handleFileChange: (file: File) => void;
+
+  // Real-time tab override props from notifications clicks
+  activeTabOverride?: 'notices' | 'complaints' | 'financials' | null;
+  onClearOverride?: () => void;
 }
 
 export default function HelpDeskSection({
@@ -55,11 +75,24 @@ export default function HelpDeskSection({
   setCompSuccess,
   compError,
   setCompError,
-  handleFileChange
+  handleFileChange,
+  activeTabOverride,
+  onClearOverride
 }: HelpDeskSectionProps) {
-  const [activeSub, setActiveSub] = useState<'notices' | 'complaints' | 'financials'>(
-    viewMode === 'complaints' ? 'complaints' : 'notices'
+  
+  // Set initial screen
+  const [activeSub, setActiveSub] = useState<'menu' | 'notices' | 'complaints' | 'financials'>(
+    viewMode === 'complaints' ? 'complaints' : 'menu'
   );
+
+  // Monitor notification redirects
+  useEffect(() => {
+    if (activeTabOverride) {
+      setActiveSub(activeTabOverride);
+      if (onClearOverride) onClearOverride();
+    }
+  }, [activeTabOverride]);
+
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [compAttachments, setCompAttachments] = useState<Array<{ url: string; name: string; type: string }>>([]);
@@ -157,50 +190,83 @@ export default function HelpDeskSection({
   });
 
   return (
-    <div className="space-y-6 text-left">
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-        {/* Tab Selection */}
-        {viewMode !== 'complaints' && (
-          <div className="flex flex-col sm:flex-row gap-2 bg-slate-50 p-1.5 rounded-xl mb-6">
-            <button
-              onClick={() => setActiveSub('notices')}
-              className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-2 cursor-pointer ${activeSub === 'notices' ? 'bg-white text-indigo-600 shadow-sm border border-slate-150' : 'text-slate-500 hover:bg-slate-100'}`}
-            >
-              <Megaphone className="w-4 h-4" />
-              <span>Society Notices</span>
-            </button>
-            {viewMode !== 'helpdesk' && (
-              <button
-                onClick={() => setActiveSub('complaints')}
-                className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-2 cursor-pointer ${activeSub === 'complaints' ? 'bg-white text-indigo-600 shadow-sm border border-slate-150' : 'text-slate-500 hover:bg-slate-100'}`}
-              >
-                <MessageSquare className="w-4 h-4" />
-                <span>Resolution Board (Tickets)</span>
-              </button>
-            )}
-            <button
-              onClick={() => setActiveSub('financials')}
-              className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-2 cursor-pointer ${activeSub === 'financials' ? 'bg-white text-indigo-600 shadow-sm border border-slate-150' : 'text-slate-500 hover:bg-slate-100'}`}
-            >
-              <FileText className="w-4 h-4" />
-              <span>Financial Ledger</span>
-            </button>
+    <div className="space-y-4 text-left">
+      {/* ==================== VIEW 1: SUB-BLOCKS MENU ==================== */}
+      {activeSub === 'menu' && (
+        <div className="space-y-4">
+          <div className="flex items-center space-x-2 border-b border-slate-100 pb-2 mb-2">
+            <FileText className="w-4 h-4 text-indigo-600" />
+            <h4 className="font-display font-bold text-xs uppercase tracking-wider text-slate-600">
+              Helpdesk, Notices & Ledger
+            </h4>
           </div>
-        )}
 
-        {/* --- SubTab: Society Notices --- */}
-        {activeSub === 'notices' && (
-          <div className="space-y-4">
-            <div className="flex items-center space-x-2 border-b border-slate-100 pb-2.5">
-              <Megaphone className="w-4 h-4 text-indigo-600" />
-              <h4 className="font-display font-bold text-xs uppercase tracking-wider text-slate-600">
-                Society Notice Board
-              </h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Sub-Block 1: Society Notices */}
+            <div
+              onClick={() => setActiveSub('notices')}
+              className="bg-white rounded-3xl p-5 border border-slate-200 hover:border-slate-300 shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group"
+            >
+              <div className="flex items-center justify-between w-full">
+                <div className="w-11 h-11 rounded-full bg-rose-50 border border-rose-100 text-rose-600 flex items-center justify-center shrink-0 shadow-sm">
+                  <Megaphone className="w-5 h-5" />
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />
+              </div>
+              <div className="mt-4">
+                <h4 className="font-display font-black text-slate-800 text-sm tracking-tight leading-snug">
+                  Society Notices
+                </h4>
+                <p className="text-[10px] text-slate-400 font-medium leading-normal mt-1">
+                  View Announcements & Letters
+                </p>
+              </div>
             </div>
 
+            {/* Sub-Block 2: Financial Ledger */}
+            <div
+              onClick={() => setActiveSub('financials')}
+              className="bg-white rounded-3xl p-5 border border-slate-200 hover:border-slate-300 shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group"
+            >
+              <div className="flex items-center justify-between w-full">
+                <div className="w-11 h-11 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 shadow-sm">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />
+              </div>
+              <div className="mt-4">
+                <h4 className="font-display font-black text-slate-800 text-sm tracking-tight leading-snug">
+                  Financial Ledger
+                </h4>
+                <p className="text-[10px] text-slate-400 font-medium leading-normal mt-1">
+                  Monthly Statement Audit Ledgers
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== SCREEN: SOCIETY NOTICES ==================== */}
+      {activeSub === 'notices' && (
+        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <button
+              onClick={() => setActiveSub('menu')}
+              className="flex items-center space-x-1 text-xs font-bold text-slate-500 hover:text-slate-800 cursor-pointer transition select-none"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to Menu</span>
+            </button>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono">
+              Notices ({filteredNotices.length})
+            </span>
+          </div>
+
+          <div className="space-y-4">
             {filteredNotices.length === 0 ? (
-              <div className="py-12 flex flex-col items-center justify-center text-slate-400 border border-dashed rounded-xl bg-slate-50/20">
-                <Bell className="w-8 h-8 text-slate-200 mb-2" />
+              <div className="py-12 flex flex-col items-center justify-center text-slate-400 border border-dashed rounded-2xl bg-slate-50/20">
+                <Bell className="w-8 h-8 text-slate-200 mb-2 animate-bounce" />
                 <p className="text-xs font-semibold">No active notices for Wing {wing} Flat {flatNo}.</p>
               </div>
             ) : (
@@ -216,11 +282,11 @@ export default function HelpDeskSection({
                   return (
                     <div
                       key={notice.id}
-                      className="bg-slate-50 border border-slate-200 rounded-2xl p-5 hover:border-slate-300 transition shadow-sm space-y-4"
+                      className="bg-slate-50/70 border border-slate-200 rounded-2xl p-5 hover:border-slate-300 transition shadow-xs space-y-4"
                     >
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-200/60 pb-3">
                         <div className="flex items-center space-x-2">
-                          <span className="p-1.5 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-lg shrink-0">
+                          <span className="p-2 bg-rose-50 border border-rose-100 text-rose-700 rounded-xl shrink-0 text-lg">
                             🔔
                           </span>
                           <div>
@@ -242,77 +308,37 @@ export default function HelpDeskSection({
                         <p className="whitespace-pre-line">{noticeContent}</p>
                       </div>
 
-                      {/* Render all multi-file notice attachments for residents */}
+                      {/* Dynamic Chunked Attachments rendering */}
                       {((notice.attachments && notice.attachments.length > 0) || notice.mediaUrl || notice.pdfUrl) && (
-                        <div className="space-y-1.5 mt-2 text-left">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Attachments ({notice.attachments?.length || 1}):</p>
+                        <div className="space-y-2 mt-2 text-left">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                            Attachments ({notice.attachments?.length || 1}):
+                          </p>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl">
-                            {/* Legacy mediaUrl image fallback */}
+                            {/* Legacy fallbacks mapped into ChunkedMedia seamlessly */}
                             {notice.mediaUrl && !(notice.attachments && notice.attachments.some((a: any) => a.url === notice.mediaUrl)) && (
-                              <div className="border border-slate-150 rounded-xl overflow-hidden bg-slate-200 col-span-full">
-                                <img
-                                  src={notice.mediaUrl}
-                                  alt="Notice Attachment"
-                                  className="w-full h-auto object-cover max-h-[220px]"
-                                  referrerPolicy="no-referrer"
-                                />
-                              </div>
+                              <ChunkedMedia
+                                fileId={notice.mediaUrl}
+                                type={notice.fileType || 'image/jpeg'}
+                                fallbackName={notice.fileName || 'Notice_Attachment'}
+                              />
                             )}
-
-                            {/* Legacy pdfUrl fallback */}
                             {notice.pdfUrl && !(notice.attachments && notice.attachments.some((a: any) => a.url === notice.pdfUrl)) && (
-                              <div className="bg-slate-50 border border-slate-200 p-3 rounded-xl flex items-center justify-between text-xs col-span-full shadow-sm">
-                                <div className="flex items-center space-x-2 truncate">
-                                  {notice.fileType?.startsWith('image/') ? (
-                                    <img src={notice.pdfUrl} className="w-10 h-10 object-cover rounded border border-slate-150" />
-                                  ) : (
-                                    <FileText className="w-8 h-8 text-indigo-500 shrink-0" />
-                                  )}
-                                  <div className="text-left truncate">
-                                    <p className="font-bold text-slate-700 truncate max-w-[150px]">{notice.fileName || 'Attachment_Notice'}</p>
-                                    <p className="text-[9px] text-slate-400 uppercase font-mono">{notice.fileType || 'file'}</p>
-                                  </div>
-                                </div>
-                                <a
-                                  href={notice.pdfUrl}
-                                  download={notice.fileName || 'notice_attachment'}
-                                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1.5 px-3 rounded-lg text-[10px] flex items-center space-x-1 cursor-pointer transition shadow"
-                                >
-                                  <Download className="w-3 h-3" />
-                                  <span>Download</span>
-                                </a>
-                              </div>
+                              <ChunkedMedia
+                                fileId={notice.pdfUrl}
+                                type={notice.fileType || 'application/pdf'}
+                                fallbackName={notice.fileName || 'Document_Notice'}
+                              />
                             )}
 
-                            {/* Multi attachments list */}
+                            {/* Multiple chunked attachments */}
                             {notice.attachments && notice.attachments.map((att: any, idx: number) => (
-                              <div key={idx} className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl flex flex-col gap-2 shadow-sm text-left">
-                                {att.type?.startsWith('image/') ? (
-                                  <div className="rounded border overflow-hidden max-h-[140px] bg-slate-100">
-                                    <img src={att.url} className="w-full object-cover max-h-[140px]" referrerPolicy="no-referrer" />
-                                  </div>
-                                ) : att.type?.startsWith('video/') ? (
-                                  <video src={att.url} controls className="max-h-[140px] w-full rounded border bg-black" />
-                                ) : (
-                                  <div className="flex items-center gap-1.5">
-                                    <FileText className="w-6 h-6 text-indigo-500 shrink-0" />
-                                    <p className="font-bold text-slate-700 truncate text-[11px] max-w-[150px]">{att.name}</p>
-                                  </div>
-                                )}
-                                <div className="flex items-center justify-between text-[10px]">
-                                  {!att.type?.startsWith('image/') && !att.type?.startsWith('video/') && (
-                                    <span className="text-[8px] text-slate-400 font-mono uppercase">{att.type?.split('/')[1] || 'FILE'}</span>
-                                  )}
-                                  <a
-                                    href={att.url}
-                                    download={att.name || 'Attachment'}
-                                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1 px-2.5 rounded text-[10px] flex items-center space-x-1 cursor-pointer ml-auto transition shadow-sm"
-                                  >
-                                    <Download className="w-3 h-3" />
-                                    <span>Download</span>
-                                  </a>
-                                </div>
-                              </div>
+                              <ChunkedMedia
+                                key={idx}
+                                fileId={att.url}
+                                type={att.type}
+                                fallbackName={att.name || 'Notice_File'}
+                              />
                             ))}
                           </div>
                         </div>
@@ -323,15 +349,29 @@ export default function HelpDeskSection({
               </div>
             )}
           </div>
-        )}
+        </div>
+      )}
 
-        {/* --- SubTab: Complaints --- */}
-        {activeSub === 'complaints' && (
+      {/* ==================== SCREEN: RESOLUTION TICKET BOARD ==================== */}
+      {activeSub === 'complaints' && (
+        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-4">
+          {viewMode !== 'complaints' && (
+            <div className="border-b border-slate-100 pb-3">
+              <button
+                onClick={() => setActiveSub('menu')}
+                className="flex items-center space-x-1 text-xs font-bold text-slate-500 hover:text-slate-800 cursor-pointer transition select-none"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Back to Menu</span>
+              </button>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             {/* Form */}
             <div className="lg:col-span-5 bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-4 text-left">
               <div className="flex items-center space-x-1.5">
-                <AlertCircle className="w-4 h-4 text-red-500" />
+                <AlertCircle className="w-4.5 h-4.5 text-red-500" />
                 <h4 className="font-display font-bold text-xs uppercase tracking-wider text-slate-800">File a Society Ticket</h4>
               </div>
 
@@ -347,7 +387,7 @@ export default function HelpDeskSection({
                     placeholder="e.g. Lift not working in Wing B"
                     value={compTitle}
                     onChange={(e) => setCompTitle(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs font-medium outline-none"
+                    className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs font-semibold outline-none focus:border-indigo-500 transition"
                   />
                 </div>
 
@@ -356,10 +396,10 @@ export default function HelpDeskSection({
                   <textarea
                     required
                     rows={4}
-                    placeholder="Provide description of leakages, repairs, wiring issues, or other issues..."
+                    placeholder="Provide description of leakages, repairs, wiring issues..."
                     value={compDesc}
                     onChange={(e) => setCompDesc(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs font-medium outline-none resize-none"
+                    className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs font-semibold outline-none resize-none focus:border-indigo-500 transition"
                   />
                 </div>
 
@@ -419,14 +459,14 @@ export default function HelpDeskSection({
                       <div className="space-y-1 max-h-[150px] overflow-y-auto">
                         {compAttachments.map((att, index) => (
                           <div key={index} className="flex items-center justify-between bg-white border border-slate-200 rounded-lg p-2 text-[11px] font-sans">
-                            <span className="truncate max-w-[80%] text-slate-600 font-medium">{att.name}</span>
+                            <span className="truncate max-w-[80%] text-slate-600 font-semibold">{att.name}</span>
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setCompAttachments(prev => prev.filter((_, i) => i !== index));
                               }}
-                              className="text-red-500 hover:text-red-700 font-bold"
+                              className="text-red-500 hover:text-red-700 font-bold cursor-pointer"
                             >
                               <X className="w-3.5 h-3.5" />
                             </button>
@@ -440,7 +480,7 @@ export default function HelpDeskSection({
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-xs transition"
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-xs uppercase tracking-wider transition cursor-pointer shadow-sm select-none"
                 >
                   {submitting ? 'Filing Complaint...' : 'Submit Ticket to Admin'}
                 </button>
@@ -471,11 +511,11 @@ export default function HelpDeskSection({
                             <span className="font-mono bg-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded text-[9px] uppercase">
                               Ticket #{item.id?.substring(0, 5) || 'COMP'}
                             </span>
-                            <h5 className="font-bold text-slate-800 mt-1 uppercase">{item.title}</h5>
+                            <h5 className="font-bold text-slate-800 mt-1 uppercase leading-snug">{item.title}</h5>
                           </div>
 
                           <span className={`text-[9px] font-bold px-2 py-0.5 rounded border uppercase ${
-                            item.status === 'Resolved' || item.status === 'processed'
+                            item.status === 'Resolved' || item.status === 'processed' || item.status === 'resolved'
                               ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                               : 'bg-amber-50 text-amber-700 border-amber-200'
                           }`}>
@@ -487,57 +527,35 @@ export default function HelpDeskSection({
                           {item.description}
                         </p>
 
-                        {/* Attachments rendering */}
+                        {/* Chunked Attachments rendering */}
                         {((item.attachments && item.attachments.length > 0) || item.mediaUrl) && (
                           <div className="space-y-2 text-left">
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Connected Attachments:</p>
-                            <div className="flex flex-wrap gap-2.5">
-                              {/* Legacy single attachment fallback */}
+                            <div className="grid grid-cols-1 gap-2.5 max-w-lg">
                               {item.mediaUrl && !(item.attachments && item.attachments.some((a: any) => a.url === item.mediaUrl)) && (
-                                <div className="bg-white border border-slate-200 p-2.5 rounded-xl flex items-center gap-2 max-w-xs shadow-sm">
-                                  {item.mediaType?.startsWith('image/') ? (
-                                    <img src={item.mediaUrl} className="w-9 h-9 object-cover rounded border border-slate-100" referrerPolicy="no-referrer" />
-                                  ) : (
-                                    <FileText className="w-5 h-5 text-indigo-500 shrink-0" />
-                                  )}
-                                  <div className="min-w-0 flex-1 text-[10px]">
-                                    <p className="font-bold text-slate-700 truncate">{item.mediaName || 'Attachment'}</p>
-                                    <a href={item.mediaUrl} download={item.mediaName || 'Attachment'} className="text-indigo-600 hover:underline font-extrabold">Download</a>
-                                  </div>
-                                </div>
+                                <ChunkedMedia
+                                  fileId={item.mediaUrl}
+                                  type={item.mediaType || 'image/jpeg'}
+                                  fallbackName={item.mediaName || 'Ticket_Attachment'}
+                                />
                               )}
 
-                              {/* Multi-attachments support */}
                               {item.attachments && item.attachments.map((att: any, idx: number) => (
-                                <div key={idx} className="bg-white border border-slate-200 p-2.5 rounded-xl flex flex-col gap-1.5 max-w-xs shadow-sm">
-                                  {att.type?.startsWith('image/') ? (
-                                    <div className="relative group rounded border overflow-hidden max-h-[140px] max-w-[200px]">
-                                      <img src={att.url} className="w-full object-cover max-h-[140px]" referrerPolicy="no-referrer" />
-                                    </div>
-                                  ) : att.type?.startsWith('video/') ? (
-                                    <video src={att.url} controls className="max-h-[140px] max-w-[200px] rounded border" />
-                                  ) : (
-                                    <div className="flex items-center gap-2">
-                                      <FileText className="w-5 h-5 text-indigo-500 shrink-0" />
-                                      <p className="font-bold text-slate-700 truncate max-w-[120px] text-[10px]">{att.name}</p>
-                                    </div>
-                                  )}
-                                  <div className="flex items-center justify-between text-[10px]">
-                                    {!att.type?.startsWith('image/') && !att.type?.startsWith('video/') && (
-                                      <span className="text-[8px] text-slate-400 font-mono uppercase">{att.type?.split('/')[1] || 'FILE'}</span>
-                                    )}
-                                    <a href={att.url} download={att.name || 'Attachment'} className="text-indigo-600 hover:underline font-extrabold ml-auto">Download</a>
-                                  </div>
-                                </div>
+                                <ChunkedMedia
+                                  key={idx}
+                                  fileId={att.url}
+                                  type={att.type}
+                                  fallbackName={att.name || 'Connected_File'}
+                                />
                               ))}
                             </div>
                           </div>
                         )}
 
-                        {/* Admin Process feedback notes */}
+                        {/* Process feedback notes */}
                         {item.resolutionNotes && (
                           <div className="bg-indigo-50 border border-indigo-100 p-3 rounded-xl text-indigo-900 space-y-1">
-                            <p className="font-bold uppercase tracking-wider text-[8px] text-indigo-600">Secretary / Commitee Process done updates:</p>
+                            <p className="font-bold uppercase tracking-wider text-[8px] text-indigo-600">Secretary Update:</p>
                             <p className="font-medium text-left">{item.resolutionNotes}</p>
                           </div>
                         )}
@@ -547,10 +565,25 @@ export default function HelpDeskSection({
               )}
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* --- SubTab: Financial Ledger --- */}
-        {activeSub === 'financials' && (
+      {/* ==================== SCREEN: FINANCIAL STATEMENT LEDGER ==================== */}
+      {activeSub === 'financials' && (
+        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <button
+              onClick={() => setActiveSub('menu')}
+              className="flex items-center space-x-1 text-xs font-bold text-slate-500 hover:text-slate-800 cursor-pointer transition select-none"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to Menu</span>
+            </button>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono">
+              Ledger Statements ({financials.length})
+            </span>
+          </div>
+
           <div className="space-y-4">
             <h4 className="font-display font-bold text-xs uppercase tracking-wider text-slate-600 border-b border-slate-100 pb-2.5 text-left">
               Quarterly Financial Statements & Maintenance Audit Ledgers
@@ -568,55 +601,47 @@ export default function HelpDeskSection({
                 {financials.map((report) => (
                   <div key={report.id} className="border border-slate-200 p-4 rounded-xl bg-slate-50/50 flex flex-col justify-between hover:border-slate-300 transition shadow-sm text-left">
                     <div className="space-y-2">
-                      <span className="text-[9px] font-mono font-bold bg-indigo-50 border border-indigo-150 text-indigo-700 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                        {report.type || 'Balance Sheet'}
-                      </span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9px] font-mono font-bold bg-indigo-50 border border-indigo-150 text-indigo-700 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                          {report.reportType || report.type || 'Balance Sheet'}
+                        </span>
+                        <span className="text-xs font-black text-indigo-700 font-mono">
+                          ₹ {report.totalExpense?.toLocaleString('en-IN') || 0}
+                        </span>
+                      </div>
                       <h5 className="font-bold text-xs text-slate-800 uppercase leading-snug">{report.title}</h5>
-                      <p className="text-[10px] text-slate-500 font-mono">Date: {new Date(report.createdAt).toLocaleDateString('en-IN')}</p>
-                      {report.notes && (
-                        <p className="text-[11px] text-slate-600 bg-white p-2 border border-slate-100 rounded leading-relaxed">{report.notes}</p>
+                      <p className="text-[10px] text-slate-500 font-mono">
+                        Date: {new Date(report.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </p>
+                      {report.description && (
+                        <p className="text-[11px] text-slate-600 bg-white p-2.5 border border-slate-150 rounded leading-relaxed whitespace-pre-line">
+                          {report.description}
+                        </p>
                       )}
                     </div>
 
-                    {/* Multi attachments list for financials */}
+                    {/* Dynamic Chunked Attachments rendering for financials */}
                     {((report.attachments && report.attachments.length > 0) || report.mediaUrl) && (
-                      <div className="border-t border-slate-100 pt-3 mt-3 space-y-1.5">
-                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Connected Attachments ({report.attachments?.length || 1}):</p>
+                      <div className="border-t border-slate-200/60 pt-3 mt-3 space-y-1.5">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                          Connected Attachments ({report.attachments?.length || 1}):
+                        </p>
                         <div className="grid grid-cols-1 gap-2">
-                          {/* Legacy mediaUrl fallback */}
                           {report.mediaUrl && !(report.attachments && report.attachments.some((a: any) => a.url === report.mediaUrl)) && (
-                            <div className="bg-white border border-slate-200 p-2 rounded-xl flex items-center justify-between text-xs shadow-sm">
-                              <span className="text-[10px] font-mono text-slate-500 truncate max-w-[150px]">📎 {report.mediaName || 'statement'}</span>
-                              <a
-                                href={report.mediaUrl}
-                                download={report.mediaName || 'report'}
-                                className="text-indigo-600 hover:underline font-extrabold text-[10px] cursor-pointer"
-                              >
-                                Download
-                              </a>
-                            </div>
+                            <ChunkedMedia
+                              fileId={report.mediaUrl}
+                              type={report.fileType || 'application/pdf'}
+                              fallbackName={report.mediaName || 'Statement_Report'}
+                            />
                           )}
 
-                          {/* Multi attachments list */}
                           {report.attachments && report.attachments.map((att: any, idx: number) => (
-                            <div key={idx} className="bg-white border border-slate-200 p-2 rounded-xl flex flex-col gap-1 shadow-sm text-left">
-                              {att.type?.startsWith('image/') ? (
-                                <div className="rounded border overflow-hidden max-h-[80px] bg-slate-50">
-                                  <img src={att.url} className="w-full object-cover max-h-[80px]" referrerPolicy="no-referrer" />
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-1.5">
-                                  <FileText className="w-4 h-4 text-indigo-500 shrink-0" />
-                                  <p className="font-bold text-slate-700 truncate text-[10px] max-w-[150px]">{att.name}</p>
-                                </div>
-                              )}
-                              <div className="flex items-center justify-between text-[10px] mt-1">
-                                {!att.type?.startsWith('image/') && (
-                                  <span className="text-[8px] text-slate-400 font-mono uppercase">{att.type?.split('/')[1] || 'FILE'}</span>
-                                )}
-                                <a href={att.url} download={att.name || 'Attachment'} className="text-indigo-600 hover:underline font-extrabold text-[10px] ml-auto">Download</a>
-                              </div>
-                            </div>
+                            <ChunkedMedia
+                              key={idx}
+                              fileId={att.url}
+                              type={att.type}
+                              fallbackName={att.name || 'Statement_File'}
+                            />
                           ))}
                         </div>
                       </div>
@@ -626,8 +651,8 @@ export default function HelpDeskSection({
               </div>
             )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

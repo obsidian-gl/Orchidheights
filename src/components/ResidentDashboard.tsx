@@ -9,6 +9,7 @@ import { FlatOwner, Visitor, Vehicle, UserSession, Announcement, AmenityBooking,
 import { api, detectServerEnvironment } from '../lib/api';
 import { db, collection, doc, setDoc, addDoc, getDocs, onSnapshot, updateDoc, deleteDoc, query, where, orderBy } from '../lib/firebase';
 import { compressImage } from '../lib/imageCompressor';
+import { uploadFileInChunks } from '../lib/fileStorage';
 
 import VisitorsSection from './resident/VisitorsSection';
 import DirectorySection from './resident/DirectorySection';
@@ -219,7 +220,8 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   // Bottom Bar Main Tabs & Sub-sections
   const [activeMainTab, setActiveMainTab] = useState<'community' | 'personal'>('community');
   const [activeSubSection, setActiveSubSection] = useState<string | null>(null);
-  const [lastVisitedSubSection, setLastVisitedSubSection] = useState<string | null>(null);
+  const [lastVisitedSubSection, setLastVisitedSubSection] = useState<string | null>(() => localStorage.getItem('orchid_last_visited_block'));
+  const [highlightBlock, setHighlightBlock] = useState<string | null>(null);
 
   // New persistent states
   const [amenityBookings, setAmenityBookings] = useState<AmenityBooking[]>([]);
@@ -341,16 +343,33 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
     };
   }, []);
 
+  // Save last visited sub-section in localStorage for persistence
+  useEffect(() => {
+    if (lastVisitedSubSection) {
+      localStorage.setItem('orchid_last_visited_block', lastVisitedSubSection);
+    }
+  }, [lastVisitedSubSection]);
+
   // Smoothly restore the user's scroll position when they return to the main dashboard from any block
   useEffect(() => {
     if (activeSubSection === null && lastVisitedSubSection) {
+      setHighlightBlock(lastVisitedSubSection);
       const timer = setTimeout(() => {
         const element = document.getElementById(`block-${lastVisitedSubSection}`);
         if (element) {
           element.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
       }, 150);
-      return () => clearTimeout(timer);
+
+      // Clear visual highlight after 2.5 seconds
+      const clearTimer = setTimeout(() => {
+        setHighlightBlock(null);
+      }, 2500);
+
+      return () => {
+        clearTimeout(timer);
+        clearTimeout(clearTimer);
+      };
     }
   }, [activeSubSection, lastVisitedSubSection]);
 
@@ -368,6 +387,7 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   const [gymTheatreSuccess, setGymTheatreSuccess] = useState<string>('');
   const [gymTheatreError, setGymTheatreError] = useState<string>('');
   const [exitPhotoBase64, setExitPhotoBase64] = useState<string>('');
+  const [exitPhotoFile, setExitPhotoFile] = useState<File | null>(null);
   const [activeCheckInLog, setActiveCheckInLog] = useState<GymTheatreLog | null>(null);
   const [showExitPhotoModal, setShowExitPhotoModal] = useState<boolean>(false);
   const [exitPhotoTimeError, setExitPhotoTimeError] = useState<boolean>(false);
@@ -528,6 +548,7 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
     }
 
     // Verify 15-minute maximum age of the photo to ensure it is live/recent
+    setExitPhotoFile(file);
     const fileAgeMs = Date.now() - file.lastModified;
     const fileAgeMinutes = fileAgeMs / 60000;
     if (fileAgeMinutes > 15) {
@@ -565,15 +586,26 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
     const elapsedMinutes = Math.max(1, Math.floor(elapsedMs / 60000));
 
     try {
+      setGymTheatreSuccess('');
+      setGymTheatreError('Uploading verification snapshot in progress...');
+      
+      let finalPhotoUrl = exitPhotoBase64;
+      if (exitPhotoFile) {
+        // Upload exit photo file in chunks to completely bypass firestore size limits!
+        const meta = await uploadFileInChunks(exitPhotoFile);
+        finalPhotoUrl = meta.fileId;
+      }
+
       await updateDoc(doc(db, 'gym_theatre_logs', activeCheckInLog.id), {
         checkOutTime: now.toISOString(),
-        exitPhotoUrl: exitPhotoBase64,
+        exitPhotoUrl: finalPhotoUrl,
         durationMinutes: elapsedMinutes
       });
       setGymTheatreSuccess(`Checked out of ${activeCheckInLog.amenity} successfully! Total session: ${elapsedMinutes} minutes.`);
       setShowExitPhotoModal(false);
       setActiveCheckInLog(null);
       setExitPhotoBase64('');
+      setExitPhotoFile(null);
       setExitPhotoTimeError(false);
     } catch (err: any) {
       setGymTheatreError(err.message || 'Check-out failed.');
@@ -1251,8 +1283,8 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
               </div>
             )}
 
-            {/* Grid of exactly 6 blocks formatted in mobile-friendly 2 columns */}
-            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            {/* Grid of blocks formatted in responsive columns */}
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               
               {/* Block 1: Gate Visitors */}
               <div
@@ -1261,7 +1293,9 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                   setLastVisitedSubSection('visitors');
                   setActiveSubSection('visitors');
                 }}
-                className="bg-white rounded-3xl p-5 border border-slate-200/60 shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group"
+                className={`bg-white rounded-3xl p-5 border shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group ${
+                  highlightBlock === 'visitors' ? 'ring-2 ring-indigo-500 ring-offset-2 animate-pulse bg-indigo-50/20 border-indigo-300' : 'border-slate-200/60'
+                }`}
               >
                 <div className="flex items-center justify-between w-full">
                   <div className="w-11 h-11 rounded-full bg-[#7C3AED] text-white flex items-center justify-center shrink-0 shadow-sm">
@@ -1279,14 +1313,16 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                 </div>
               </div>
 
-              {/* Block 2: Complaint Box (formerly Notice Board) */}
+              {/* Block 2: Complaint Box */}
               <div
                 id="block-complaints"
                 onClick={() => {
                   setLastVisitedSubSection('complaints');
                   setActiveSubSection('complaints');
                 }}
-                className="bg-white rounded-3xl p-5 border border-slate-200/60 shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group"
+                className={`bg-white rounded-3xl p-5 border shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group ${
+                  highlightBlock === 'complaints' ? 'ring-2 ring-indigo-500 ring-offset-2 animate-pulse bg-indigo-50/20 border-indigo-300' : 'border-slate-200/60'
+                }`}
               >
                 <div className="flex items-center justify-between w-full">
                   <div className="w-11 h-11 rounded-full bg-[#EC4899] text-white flex items-center justify-center shrink-0 shadow-sm">
@@ -1311,7 +1347,9 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                   setLastVisitedSubSection('directory');
                   setActiveSubSection('directory');
                 }}
-                className="bg-white rounded-3xl p-5 border border-slate-200/60 shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group"
+                className={`bg-white rounded-3xl p-5 border shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group ${
+                  highlightBlock === 'directory' ? 'ring-2 ring-indigo-500 ring-offset-2 animate-pulse bg-indigo-50/20 border-indigo-300' : 'border-slate-200/60'
+                }`}
               >
                 <div className="flex items-center justify-between w-full">
                   <div className="w-11 h-11 rounded-full bg-[#2563EB] text-white flex items-center justify-center shrink-0 shadow-sm">
@@ -1336,7 +1374,9 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                   setLastVisitedSubSection('amenity');
                   setActiveSubSection('amenity');
                 }}
-                className="bg-white rounded-3xl p-5 border border-slate-200/60 shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group"
+                className={`bg-white rounded-3xl p-5 border shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group ${
+                  highlightBlock === 'amenity' ? 'ring-2 ring-indigo-500 ring-offset-2 animate-pulse bg-indigo-50/20 border-indigo-300' : 'border-slate-200/60'
+                }`}
               >
                 <div className="flex items-center justify-between w-full">
                   <div className="w-11 h-11 rounded-full bg-[#059669] text-white flex items-center justify-center shrink-0 shadow-sm">
@@ -1361,7 +1401,9 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                   setLastVisitedSubSection('services');
                   setActiveSubSection('services');
                 }}
-                className="bg-white rounded-3xl p-5 border border-slate-200/60 shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group"
+                className={`bg-white rounded-3xl p-5 border shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group ${
+                  highlightBlock === 'services' ? 'ring-2 ring-indigo-500 ring-offset-2 animate-pulse bg-indigo-50/20 border-indigo-300' : 'border-slate-200/60'
+                }`}
               >
                 <div className="flex items-center justify-between w-full">
                   <div className="w-11 h-11 rounded-full bg-[#DB2777] text-white flex items-center justify-center shrink-0 shadow-sm">
@@ -1386,7 +1428,9 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                   setLastVisitedSubSection('helpdesk');
                   setActiveSubSection('helpdesk');
                 }}
-                className="bg-white rounded-3xl p-5 border border-slate-200/60 shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group"
+                className={`bg-white rounded-3xl p-5 border shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group ${
+                  highlightBlock === 'helpdesk' ? 'ring-2 ring-indigo-500 ring-offset-2 animate-pulse bg-indigo-50/20 border-indigo-300' : 'border-slate-200/60'
+                }`}
               >
                 <div className="flex items-center justify-between w-full">
                   <div className="w-11 h-11 rounded-full bg-[#EA580C] text-white flex items-center justify-center shrink-0 shadow-sm">
@@ -1411,7 +1455,9 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                   setLastVisitedSubSection('buildingservices');
                   setActiveSubSection('buildingservices');
                 }}
-                className="bg-white rounded-3xl p-5 border border-[#242A66]/10 shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group"
+                className={`bg-white rounded-3xl p-5 border shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group ${
+                  highlightBlock === 'buildingservices' ? 'ring-2 ring-indigo-500 ring-offset-2 animate-pulse bg-indigo-50/20 border-indigo-300' : 'border-[#242A66]/10'
+                }`}
               >
                 <div className="flex items-center justify-between w-full">
                   <div className="w-11 h-11 rounded-full bg-[#4F46E5] text-white flex items-center justify-center shrink-0 shadow-sm">
@@ -1425,6 +1471,36 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                   </h4>
                   <p className="text-[10px] text-slate-400 font-medium leading-normal mt-1">
                     Lift, Plumber, Electrician etc.
+                  </p>
+                </div>
+              </div>
+
+              {/* Block 8: Society Alerts & Logs (Dedicated Notifications Block - 2-week history) */}
+              <div
+                id="block-notifications"
+                onClick={() => {
+                  setLastVisitedSubSection('notifications');
+                  setActiveSubSection('notifications');
+                }}
+                className={`bg-white rounded-3xl p-5 border shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group ${
+                  highlightBlock === 'notifications' ? 'ring-2 ring-indigo-500 ring-offset-2 animate-pulse bg-indigo-50/20 border-indigo-300' : 'border-slate-200/60'
+                }`}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <div className="w-11 h-11 rounded-full bg-[#EF4444] text-white flex items-center justify-center shrink-0 shadow-sm relative">
+                    <Bell className="w-5 h-5" />
+                    {societyNotifications.filter((n) => !dismissedNotifIds.includes(n.id)).length > 0 && (
+                      <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-rose-600 rounded-full animate-ping" />
+                    )}
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />
+                </div>
+                <div className="mt-4">
+                  <h4 className="font-display font-black text-slate-800 text-sm tracking-tight leading-snug">
+                    Society Alerts & Logs
+                  </h4>
+                  <p className="text-[10px] text-slate-400 font-medium leading-normal mt-1">
+                    2-Week Notification History
                   </p>
                 </div>
               </div>
@@ -1514,6 +1590,7 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                 flatNo={flatNo}
                 dailyHelpers={dailyHelpers}
                 handleToggleHelperMapping={handleToggleHelperMapping}
+                essentialContacts={essentialContacts}
               />
             )}
 
@@ -1577,6 +1654,128 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
 
             {activeSubSection === 'buildingservices' && (
               <BuildingServicesSection contacts={essentialContacts} />
+            )}
+
+            {activeSubSection === 'notifications' && (
+              <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-5 text-left">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3 font-mono">
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                    Society Alert Center
+                  </span>
+                  <span className="text-[9px] bg-red-50 text-red-700 px-2 py-0.5 rounded font-bold">
+                    14-Day Limit History
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  <h3 className="font-display font-black text-slate-800 text-base">Alerts & Logs</h3>
+                  <p className="text-[10.5px] text-slate-400 font-medium leading-normal font-sans">
+                    Real-time safety broadcasts, visitor check-ins, scheduled movie reminders, and complaint updates.
+                  </p>
+                </div>
+
+                {(() => {
+                  const twoWeeksAgo = new Date();
+                  twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+
+                  const filteredNotifs = societyNotifications.filter((n) => {
+                    const notifTime = n.timestamp ? new Date(n.timestamp).getTime() : Date.now();
+                    return notifTime >= twoWeeksAgo.getTime();
+                  });
+
+                  if (filteredNotifs.length === 0) {
+                    return (
+                      <div className="py-12 border border-dashed border-slate-200 rounded-2xl text-center text-slate-400 bg-slate-50/20">
+                        <Bell className="w-8 h-8 text-slate-200 mx-auto mb-2 animate-pulse" />
+                        <p className="text-xs font-bold text-slate-500">No notifications registered in the last 14 days.</p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+                      {filteredNotifs.map((notif) => {
+                        const isDismissed = dismissedNotifIds.includes(notif.id);
+                        return (
+                          <div 
+                            key={notif.id} 
+                            className={`p-4 rounded-2xl border transition flex items-start gap-3 justify-between ${
+                              isDismissed 
+                                ? 'bg-slate-50/70 border-slate-200 text-slate-500' 
+                                : 'bg-white border-red-100 shadow-xs text-slate-800 ring-1 ring-red-50/50'
+                            }`}
+                          >
+                            <div className="space-y-1 text-left min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-black text-xs uppercase tracking-tight">
+                                  {notif.title}
+                                </span>
+                                {!isDismissed && (
+                                  <span className="w-1.5 h-1.5 bg-rose-600 rounded-full shrink-0" />
+                                )}
+                              </div>
+                              <p className="text-[11.5px] leading-relaxed font-medium font-sans">
+                                {notif.message}
+                              </p>
+                              <p className="text-[9px] text-slate-400 font-mono mt-1">
+                                {new Date(notif.timestamp).toLocaleString('en-IN', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {notif.type === 'movie_schedule' && (
+                                <button
+                                  onClick={() => {
+                                    setLastVisitedSubSection('amenity');
+                                    setActiveSubSection('amenity');
+                                    localStorage.setItem('orchid_deep_redirect', 'movies');
+                                    setTimeout(() => {
+                                      window.dispatchEvent(new Event('orchid_amenities_redirect'));
+                                    }, 100);
+                                  }}
+                                  className="text-[9px] font-black uppercase tracking-tight bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-100 px-2 py-1 rounded-lg cursor-pointer animate-pulse"
+                                >
+                                  Open Movies
+                                </button>
+                              )}
+
+                              {notif.type === 'complaint' && (
+                                <button
+                                  onClick={() => {
+                                    setLastVisitedSubSection('complaints');
+                                    setActiveSubSection('complaints');
+                                  }}
+                                  className="text-[9px] font-black uppercase tracking-tight bg-pink-50 hover:bg-pink-100 text-pink-700 border border-pink-100 px-2 py-1 rounded-lg cursor-pointer"
+                                >
+                                  Open Ticket
+                                </button>
+                              )}
+
+                              {!isDismissed ? (
+                                <button
+                                  onClick={() => handleDismissNotification(notif.id)}
+                                  className="text-[9px] font-black uppercase tracking-tight bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 px-2.5 py-1 rounded-lg cursor-pointer"
+                                >
+                                  Dismiss
+                                </button>
+                              ) : (
+                                <span className="text-[8px] font-mono font-bold text-slate-400 uppercase">
+                                  Archived
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
             )}
           </div>
         )

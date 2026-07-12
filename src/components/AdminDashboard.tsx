@@ -656,6 +656,20 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
         processNotes: editingComplaint.processNotes || ''
       });
 
+      if (editingComplaint.status === 'resolved') {
+        const parts = (editingComplaint.flatId || '').split('-');
+        const wingPart = parts[0] || '';
+        const flatPart = Number(parts[1]) || 0;
+        await api.createSocietyNotification({
+          type: 'complaint',
+          title: `✓ Ticket Resolved: ${editingComplaint.title}`,
+          message: `Your ticket has been marked resolved. Action Notes: ${editingComplaint.processNotes || 'None'}`,
+          wing: wingPart,
+          flatNo: flatPart,
+          metadata: { complaintId: editingComplaint.id }
+        });
+      }
+
       setComplaintSuccess('Complaint updated successfully.');
       setTimeout(() => {
         setEditingComplaint(null);
