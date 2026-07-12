@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Dumbbell, Film, Sparkles, Clock, Check, AlertCircle, Plus, Upload, X, CheckSquare, PlusCircle, ArrowRight, Users, CheckCircle2 } from 'lucide-react';
+import { Calendar, Dumbbell, Film, Sparkles, Clock, Check, AlertCircle, Plus, Upload, X, CheckSquare, PlusCircle, ArrowRight, Users, CheckCircle2, Download, Trash2 } from 'lucide-react';
 import { AmenityBooking, GymTheatreLog } from '../../types';
-import { db, collection, onSnapshot, doc, setDoc, deleteDoc } from '../../lib/firebase';
+import { db, collection, onSnapshot, doc, setDoc, deleteDoc, createSocietyNotification } from '../../lib/firebase';
+import { compressImage } from '../../lib/imageCompressor';
 
 interface AmenitiesSectionProps {
   wing: string;
@@ -115,38 +116,196 @@ export default function AmenitiesSection({
   const myFlatId = `${wing}-${flatNo}`;
   const THRESHOLD = 49;
 
-  // Real-time Movie RSVPs state
-  const [rsvps, setRsvps] = useState<Array<{ id: string; movieId: string; flatId: string }>>([]);
+  // Real-time Movie Screenings state
+  const [movies, setMovies] = useState<any[]>([]);
+  const [showAddMovieForm, setShowAddMovieForm] = useState<boolean>(false);
+  
+  // Movie Form Fields
+  const [mTitle, setMTitle] = useState<string>('');
+  const [mGenre, setMGenre] = useState<string>('');
+  const [mTiming, setMTiming] = useState<string>('');
+  const [mDay, setMDay] = useState<string>('Friday');
+  const [mDate, setMDate] = useState<string>('');
+  const [mLength, setMLength] = useState<string>('');
+  const [mTrailerUrl, setMTrailerUrl] = useState<string>('');
+  const [mPosterUrl, setMPosterUrl] = useState<string>('');
+  const [mRating, setMRating] = useState<string>('UA');
+  const [mSynopsis, setMSynopsis] = useState<string>('');
+  
+  const [isUploadingPoster, setIsUploadingPoster] = useState<boolean>(false);
+  const [moviePostSuccess, setMoviePostSuccess] = useState<string>('');
+  const [moviePostError, setMoviePostError] = useState<string>('');
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'movie_rsvps'), (snap) => {
+    const unsub = onSnapshot(collection(db, 'movies_schedule'), async (snap) => {
       const list: any[] = [];
       snap.forEach((doc) => {
         list.push({ id: doc.id, ...doc.data() });
       });
-      setRsvps(list);
+
+      if (list.length === 0) {
+        // Automatically seed the 3 high-fidelity defaults
+        const seedMovies = [
+          {
+            title: 'Singham Again',
+            genre: 'Action / Drama',
+            timing: '8:00 PM',
+            day: 'Friday',
+            date: '2026-07-17',
+            length: '2h 40m',
+            synopsis: 'Supercop Bajirao Singham returns to battle a dangerous international conspiracy threatening national security.',
+            rating: 'UA',
+            posterUrl: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&w=300&q=80',
+            createdAt: new Date().toISOString()
+          },
+          {
+            title: 'Bhool Bhulaiyaa 3',
+            genre: 'Horror / Comedy',
+            timing: '9:00 PM',
+            day: 'Saturday',
+            date: '2026-07-18',
+            length: '2h 32m',
+            synopsis: 'Rooh Baba enters a haunted estate in Bengal, only to find himself facing two vengeful spirits claiming to be Manjulika.',
+            rating: 'UA',
+            posterUrl: 'https://images.unsplash.com/photo-1509248961158-e54f6934749c?auto=format&fit=crop&w=300&q=80',
+            createdAt: new Date().toISOString()
+          },
+          {
+            title: 'Stree 2',
+            genre: 'Comedy / Horror',
+            timing: '4:00 PM',
+            day: 'Sunday',
+            date: '2026-07-19',
+            length: '2h 27m',
+            synopsis: 'The town of Chanderi is haunted by a new headless monster "Sarkata". The resident group rallies Stree to save them.',
+            rating: 'UA',
+            posterUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=300&q=80',
+            createdAt: new Date().toISOString()
+          }
+        ];
+        for (const sm of seedMovies) {
+          const id = 'movie_' + Math.random().toString(36).substring(2, 11);
+          await setDoc(doc(db, 'movies_schedule', id), { id, ...sm });
+        }
+      } else {
+        // Sort by date / createdAt
+        list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        setMovies(list);
+      }
     }, (error) => {
-      console.error('Error listening to movie RSVPs:', error);
+      console.error('Error listening to movies schedule:', error);
     });
     return () => unsub();
   }, []);
 
-  const handleToggleRSVP = async (movieId: string) => {
-    const myRsvp = rsvps.find(r => r.movieId === movieId && r.flatId === myFlatId);
+  const handlePosterChange = async (file: File) => {
+    setIsUploadingPoster(true);
+    setMoviePostError('');
     try {
-      if (myRsvp) {
-        await deleteDoc(doc(db, 'movie_rsvps', myRsvp.id));
-      } else {
-        const id = `${movieId}_${myFlatId}`;
-        await setDoc(doc(db, 'movie_rsvps', id), {
-          movieId,
-          flatId: myFlatId,
-          timestamp: new Date().toISOString()
-        });
-      }
+      // Compress the poster beautifully keeping aspect ratio and ensuring it is very lightweight
+      const base64 = await compressImage(file, 500, 750, 0.6);
+      setMPosterUrl(base64);
     } catch (err) {
-      console.error('Failed to toggle movie RSVP:', err);
+      console.error('Poster compression failed:', err);
+      setMoviePostError('Failed to process image file.');
+    } finally {
+      setIsUploadingPoster(false);
     }
+  };
+
+  const handlePostMovie = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMoviePostError('');
+    setMoviePostSuccess('');
+
+    if (!mTitle.trim()) {
+      setMoviePostError('Movie Name is required.');
+      return;
+    }
+    if (!mDate) {
+      setMoviePostError('Date is required.');
+      return;
+    }
+    if (!mTiming.trim()) {
+      setMoviePostError('Timing is required.');
+      return;
+    }
+    if (!mLength.trim()) {
+      setMoviePostError('Picture Length / Duration is required.');
+      return;
+    }
+
+    const movieId = 'movie_' + Math.random().toString(36).substring(2, 11);
+    const newMovie = {
+      id: movieId,
+      title: mTitle.trim(),
+      genre: mGenre.trim() || 'Entertainment',
+      timing: mTiming.trim(),
+      day: mDay,
+      date: mDate,
+      length: mLength.trim(),
+      trailerUrl: mTrailerUrl.trim() || null,
+      posterUrl: mPosterUrl || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&w=300&q=80',
+      synopsis: mSynopsis.trim() || 'No synopsis available.',
+      rating: mRating,
+      createdAt: new Date().toISOString(),
+      postedBy: myFlatId
+    };
+
+    try {
+      await setDoc(doc(db, 'movies_schedule', movieId), newMovie);
+      
+      // Post society notification dynamically
+      await createSocietyNotification({
+        type: 'movie_schedule',
+        title: `🎬 New Movie Scheduled: ${mTitle}`,
+        message: `Scheduled by Flat ${myFlatId} for ${mDay} (${mDate}) at ${mTiming}. Length: ${mLength}.`,
+        wing,
+        flatNo
+      });
+
+      setMoviePostSuccess(`Movie "${mTitle}" posted successfully and broadcasted to everyone!`);
+      
+      // Reset form fields
+      setMTitle('');
+      setMGenre('');
+      setMTiming('');
+      setMDay('Friday');
+      setMDate('');
+      setMLength('');
+      setMTrailerUrl('');
+      setMPosterUrl('');
+      setMRating('UA');
+      setMSynopsis('');
+      setShowAddMovieForm(false);
+    } catch (err) {
+      console.error('Failed to post movie screening:', err);
+      setMoviePostError('Failed to schedule movie screening in database.');
+    }
+  };
+
+  const handleDownloadMoviesCSV = () => {
+    if (movies.length === 0) {
+      alert('No movie screening schedules available.');
+      return;
+    }
+    let csvContent = `Orchid Heights Mini Theatre - Movie Schedule Report\r\n`;
+    csvContent += `Generated On,${new Date().toLocaleString('en-IN')}\r\n\r\n`;
+    csvContent += `"Movie Name","Rating","Genre","Day","Date","Timing","Length / Duration","Synopsis","Trailer Link"\r\n`;
+
+    movies.forEach((movie) => {
+      const synopsisClean = (movie.synopsis || '').replace(/"/g, '""');
+      csvContent += `"${movie.title}","${movie.rating}","${movie.genre}","${movie.day}","${movie.date}","${movie.timing}","${movie.length || 'N/A'}","${synopsisClean}","${movie.trailerUrl || 'N/A'}"\r\n`;
+    });
+
+    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Mini_Theatre_Movie_Schedule_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // Find if currently checked in to Gym or Theatre
@@ -304,76 +463,311 @@ export default function AmenitiesSection({
 
       {/* ==================== BLOCK 2: MINI MOVIE THEATRE SCREENING SCHEDULE ==================== */}
       <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-sm space-y-4">
-        <div className="flex items-center space-x-2.5 border-b border-slate-100 pb-3">
-          <Film className="w-5 h-5 text-indigo-600 shrink-0" />
-          <div>
-            <h3 className="font-display font-black text-sm text-slate-800 uppercase tracking-tight">Mini Movie Theatre Schedule</h3>
-            <p className="text-[10px] text-slate-400 mt-0.5">Book seats & RSVP for upcoming blockbusters in the society lounge</p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+          <div className="flex items-center space-x-2.5">
+            <Film className="w-5 h-5 text-indigo-600 shrink-0" />
+            <div>
+              <h3 className="font-display font-black text-sm text-slate-800 uppercase tracking-tight">Mini Movie Theatre Schedule</h3>
+              <p className="text-[10px] text-slate-400 mt-0.5">Upcoming blockbusters scheduled by residents in the society lounge</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleDownloadMoviesCSV}
+              className="px-3 py-1.5 border border-slate-200 hover:border-slate-300 rounded-xl text-[10px] font-extrabold uppercase text-slate-600 transition flex items-center gap-1 cursor-pointer select-none"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Export CSV</span>
+            </button>
+            <button
+              onClick={() => setShowAddMovieForm(!showAddMovieForm)}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-xl text-[10px] font-extrabold uppercase transition flex items-center gap-1 cursor-pointer select-none shadow-xs"
+            >
+              {showAddMovieForm ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+              <span>{showAddMovieForm ? 'Close Form' : 'Schedule Movie'}</span>
+            </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {DEFAULT_MOVIES.map((movie) => {
-            const movieRSVPs = rsvps.filter(r => r.movieId === movie.id);
-            const hasRSVPed = movieRSVPs.some(r => r.flatId === myFlatId);
+        {/* Schedule Movie Form Panel */}
+        {showAddMovieForm && (
+          <form onSubmit={handlePostMovie} className="bg-slate-50 border border-indigo-100 p-4 rounded-xl space-y-3 animate-fadeIn text-xs">
+            <div className="flex items-center space-x-1.5 text-slate-800 border-b border-slate-200 pb-2 mb-2">
+              <PlusCircle className="w-4 h-4 text-indigo-600" />
+              <h4 className="font-display font-black text-[11px] uppercase tracking-wider">Post Movie Screening</h4>
+            </div>
 
-            return (
-              <div key={movie.id} className="bg-slate-50 border border-slate-200 rounded-xl overflow-hidden flex flex-col justify-between shadow-xs hover:border-slate-300 transition">
-                <div className="relative h-32 w-full bg-slate-900">
-                  <img src={movie.posterUrl} className="w-full h-full object-cover opacity-80" alt={movie.title} />
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950 to-transparent flex flex-col justify-end p-3">
-                    <span className="text-[8px] bg-indigo-600 text-white font-black px-1.5 py-0.5 rounded w-max uppercase tracking-wider font-mono">
-                      {movie.rating}
-                    </span>
-                    <h4 className="font-display font-black text-white text-xs sm:text-sm tracking-tight leading-tight mt-1 uppercase">
-                      {movie.title}
-                    </h4>
-                  </div>
+            {moviePostError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 p-2.5 rounded-lg text-[11px]">
+                {moviePostError}
+              </div>
+            )}
+
+            {moviePostSuccess && (
+              <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 p-2.5 rounded-lg text-[11px] font-bold">
+                {moviePostSuccess}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Movie Name *</label>
+                <input
+                  type="text"
+                  value={mTitle}
+                  onChange={(e) => setMTitle(e.target.value)}
+                  placeholder="e.g. Singham Again"
+                  className="w-full bg-white border border-slate-250 p-2 rounded-lg focus:outline-indigo-500 text-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Genre</label>
+                <input
+                  type="text"
+                  value={mGenre}
+                  onChange={(e) => setMGenre(e.target.value)}
+                  placeholder="e.g. Action / Comedy"
+                  className="w-full bg-white border border-slate-250 p-2 rounded-lg focus:outline-indigo-500 text-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Rating</label>
+                <select
+                  value={mRating}
+                  onChange={(e) => setMRating(e.target.value)}
+                  className="w-full bg-white border border-slate-250 p-2 rounded-lg focus:outline-indigo-500 text-slate-800 font-bold"
+                >
+                  <option value="UA">UA • Parents Guidance</option>
+                  <option value="U">U • Unrestricted</option>
+                  <option value="A">A • Adults Only</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Day</label>
+                <select
+                  value={mDay}
+                  onChange={(e) => setMDay(e.target.value)}
+                  className="w-full bg-white border border-slate-250 p-2 rounded-lg focus:outline-indigo-500 text-slate-800 font-bold"
+                >
+                  <option value="Monday">Monday</option>
+                  <option value="Tuesday">Tuesday</option>
+                  <option value="Wednesday">Wednesday</option>
+                  <option value="Thursday">Thursday</option>
+                  <option value="Friday">Friday</option>
+                  <option value="Saturday">Saturday</option>
+                  <option value="Sunday">Sunday</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Date *</label>
+                <input
+                  type="date"
+                  value={mDate}
+                  onChange={(e) => setMDate(e.target.value)}
+                  className="w-full bg-white border border-slate-250 p-2 rounded-lg focus:outline-indigo-500 text-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Timing *</label>
+                <input
+                  type="text"
+                  value={mTiming}
+                  onChange={(e) => setMTiming(e.target.value)}
+                  placeholder="e.g. 8:00 PM"
+                  className="w-full bg-white border border-slate-250 p-2 rounded-lg focus:outline-indigo-500 text-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Length / Duration *</label>
+                <input
+                  type="text"
+                  value={mLength}
+                  onChange={(e) => setMLength(e.target.value)}
+                  placeholder="e.g. 2h 40m"
+                  className="w-full bg-white border border-slate-250 p-2 rounded-lg focus:outline-indigo-500 text-slate-800"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Trailer Video Link (Optional)</label>
+                <input
+                  type="url"
+                  value={mTrailerUrl}
+                  onChange={(e) => setMTrailerUrl(e.target.value)}
+                  placeholder="e.g. https://youtube.com/..."
+                  className="w-full bg-white border border-slate-250 p-2 rounded-lg focus:outline-indigo-500 text-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Poster Image (Optional)</label>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        handlePosterChange(e.target.files[0]);
+                      }
+                    }}
+                    className="hidden"
+                    id="movie-poster-input"
+                  />
+                  <label
+                    htmlFor="movie-poster-input"
+                    className="flex-1 bg-white border border-dashed border-slate-300 hover:border-indigo-500 p-2 rounded-lg text-center cursor-pointer text-slate-500 hover:text-indigo-600 transition flex items-center justify-center space-x-1.5"
+                  >
+                    <Upload className="w-4 h-4 shrink-0" />
+                    <span className="truncate">{mPosterUrl ? 'Poster Selected ✓' : 'Upload Poster (Any Size)'}</span>
+                  </label>
+                  {mPosterUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setMPosterUrl('')}
+                      className="bg-red-50 hover:bg-red-100 text-red-600 p-2 rounded-lg transition"
+                      title="Clear Poster"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
+                {isUploadingPoster && <p className="text-[9px] text-indigo-500 mt-1 animate-pulse">Processing & compressing poster...</p>}
+              </div>
+            </div>
 
-                <div className="p-3 text-left space-y-2 flex-1 flex flex-col justify-between">
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-[10px] text-slate-500 font-bold font-mono">
-                      <span>{movie.genre}</span>
-                      <span className="text-indigo-600">{movie.timing}</span>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Synopsis</label>
+              <textarea
+                value={mSynopsis}
+                onChange={(e) => setMSynopsis(e.target.value)}
+                placeholder="Brief movie overview..."
+                rows={2}
+                className="w-full bg-white border border-slate-250 p-2 rounded-lg focus:outline-indigo-500 text-slate-800 resize-none"
+              ></textarea>
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowAddMovieForm(false)}
+                className="bg-white border border-slate-250 hover:bg-slate-100 text-slate-700 font-bold px-4 py-2 rounded-lg cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isUploadingPoster}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2 rounded-lg cursor-pointer disabled:opacity-50"
+              >
+                Post Screening
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* Movies List Grid */}
+        {movies.length === 0 ? (
+          <div className="py-12 border border-dashed border-slate-200 rounded-xl text-center text-slate-400">
+            <p className="text-xs">No upcoming screenings listed. Use "Schedule Movie" to post one!</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
+            {movies.map((movie) => {
+              const isMyPosting = movie.postedBy === myFlatId;
+
+              return (
+                <div key={movie.id} className="bg-slate-50 border border-slate-200 rounded-xl overflow-hidden flex flex-col justify-between shadow-xs hover:border-slate-300 transition group relative">
+                  
+                  {/* Aspect-honest, complete rendering for Portrait/Landscape posters */}
+                  <div className="relative h-48 w-full bg-slate-900 border-b border-slate-100 flex items-center justify-center overflow-hidden">
+                    <img
+                      src={movie.posterUrl}
+                      className="max-h-full max-w-full object-contain transition duration-300 group-hover:scale-102"
+                      alt={movie.title}
+                      referrerPolicy="no-referrer"
+                    />
+                    <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                      <span className="text-[8px] bg-slate-900/80 backdrop-blur-xs text-white font-black px-1.5 py-0.5 rounded uppercase tracking-wider font-mono border border-slate-800">
+                        {movie.rating}
+                      </span>
                     </div>
-                    <p className="text-[10px] text-slate-500 leading-relaxed font-medium">
-                      {movie.synopsis}
-                    </p>
+
+                    {isMyPosting && (
+                      <button
+                        onClick={async () => {
+                          if (confirm(`Delete "${movie.title}" screening schedule?`)) {
+                            try {
+                              await deleteDoc(doc(db, 'movies_schedule', movie.id));
+                            } catch (e) {
+                              alert('Failed to delete movie schedule.');
+                            }
+                          }
+                        }}
+                        className="absolute top-2.5 right-2.5 bg-red-600/90 hover:bg-red-700 text-white p-1.5 rounded-lg transition shadow-sm cursor-pointer select-none"
+                        title="Delete Screening"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
 
-                  <div className="border-t border-slate-150 pt-2.5 mt-2 flex items-center justify-between">
-                    <div className="text-left">
-                      <p className="text-[7px] font-mono font-bold text-slate-400 uppercase leading-none">Attending RSVPs</p>
-                      <div className="flex items-center gap-1 mt-1">
-                        <Users className="w-3 h-3 text-slate-400 shrink-0" />
-                        <span className="text-[10px] font-black text-slate-700 font-mono">
-                          {movieRSVPs.length} Flats
-                        </span>
+                  <div className="p-3 text-left space-y-2 flex-1 flex flex-col justify-between">
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <h4 className="font-display font-black text-slate-800 text-xs sm:text-sm tracking-tight leading-tight uppercase truncate">
+                          {movie.title}
+                        </h4>
                       </div>
-                      {movieRSVPs.length > 0 && (
-                        <p className="text-[8px] text-slate-400 font-mono truncate max-w-[100px] mt-0.5">
-                          {movieRSVPs.map(r => r.flatId).join(', ')}
+                      <div className="flex flex-wrap items-center gap-x-2 text-[9px] text-indigo-600 font-bold font-mono">
+                        <span>{movie.genre}</span>
+                        <span className="text-slate-300">•</span>
+                        <span>{movie.day} • {movie.date}</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 leading-normal font-medium line-clamp-3 pt-1">
+                        {movie.synopsis}
+                      </p>
+                    </div>
+
+                    <div className="border-t border-slate-150 pt-2 mt-2 flex items-center justify-between text-[10px]">
+                      <div className="text-left font-mono">
+                        <p className="text-[7px] font-bold text-slate-400 uppercase leading-none">Screening stats</p>
+                        <p className="text-slate-700 font-black mt-1 uppercase text-[9px]">
+                          🕒 {movie.timing}
                         </p>
+                        <p className="text-[8px] text-slate-400 mt-0.5">
+                          ⏳ {movie.length || 'N/A'} • Flat {movie.postedBy}
+                        </p>
+                      </div>
+
+                      {movie.trailerUrl && (
+                        <a
+                          href={movie.trailerUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="bg-white border border-slate-250 hover:border-slate-350 text-slate-700 font-extrabold px-2.5 py-1.5 rounded-lg text-[9px] uppercase transition flex items-center gap-1 cursor-pointer select-none shadow-xs"
+                        >
+                          <span>Play Trailer</span>
+                          <ArrowRight className="w-3 h-3" />
+                        </a>
                       )}
                     </div>
-
-                    <button
-                      onClick={() => handleToggleRSVP(movie.id)}
-                      className={`py-1.5 px-3 rounded-lg text-[9px] font-extrabold uppercase transition-all duration-150 cursor-pointer shadow-xs select-none ${
-                        hasRSVPed
-                          ? 'bg-emerald-500 text-white border border-emerald-600'
-                          : 'bg-white border border-slate-200 hover:border-slate-300 text-slate-600'
-                      }`}
-                    >
-                      {hasRSVPed ? '✓ RSVPed' : 'Reserve Seat'}
-                    </button>
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* ==================== BLOCK 3: FUNCTION HALL BOOKINGS & DECISION ENGINE ==================== */}

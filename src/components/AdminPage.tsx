@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FlatOwner } from '../types';
 import AdminDashboard from './AdminDashboard';
@@ -109,6 +109,33 @@ export default function AdminPage({
   setAdminSession,
 }: AdminPageProps) {
   const navigate = useNavigate();
+
+  useEffect(() => {
+    let link = document.querySelector("link[rel='manifest']") as HTMLLinkElement;
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'manifest';
+      document.head.appendChild(link);
+    }
+    const originalHref = link.href || '/manifest.json';
+    link.href = '/admin-manifest.json';
+    document.title = 'Orchid Admin';
+
+    // Swap the favicon to the admin icon as well
+    let iconLink = document.querySelector("link[rel='icon']") as HTMLLinkElement;
+    const originalIconHref = iconLink ? iconLink.href : 'https://i.ibb.co/zT5tpcdY/1000296229-1.png';
+    if (iconLink) {
+      iconLink.href = 'https://i.ibb.co/n8zFVXDk/Chat-GPT-Image-Jul-12-2026-10-51-40-PM.png';
+    }
+
+    return () => {
+      link.href = originalHref;
+      document.title = 'Orchid Heights Gatekeeper';
+      if (iconLink) {
+        iconLink.href = originalIconHref;
+      }
+    };
+  }, []);
 
   const handleLoginSuccess = (sess: any) => {
     localStorage.setItem('orchid_admin_session', JSON.stringify(sess));

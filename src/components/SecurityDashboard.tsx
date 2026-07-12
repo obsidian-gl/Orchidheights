@@ -8,8 +8,7 @@ import { Shield, Plus, Clock, Search, AlertCircle, CheckCircle2, XCircle, FileSp
 import { FlatOwner, Visitor, DailyHelper } from '../types';
 import WebcamCapture from './WebcamCapture';
 import { api, detectServerEnvironment } from '../lib/api';
-import { collection, onSnapshot, doc, setDoc, updateDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { collection, onSnapshot, doc, setDoc, updateDoc, db } from '../lib/firebase';
 
 const playDecisionSound = (status: 'approved' | 'rejected' | 'expired') => {
   if (status === 'expired') return;

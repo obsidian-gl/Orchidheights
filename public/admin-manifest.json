@@ -1,0 +1,24 @@
+{
+  "name": "Orchid Admin",
+  "short_name": "Orchid Admin",
+  "start_url": "/admin",
+  "scope": "/admin",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#7C3AED",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://i.ibb.co/n8zFVXDk/Chat-GPT-Image-Jul-12-2026-10-51-40-PM.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://i.ibb.co/n8zFVXDk/Chat-GPT-Image-Jul-12-2026-10-51-40-PM.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

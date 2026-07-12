@@ -8,6 +8,7 @@ import { Bell, ShieldAlert, Check, X, Users, Car, Phone, Lock, Eye, EyeOff, Clip
 import { FlatOwner, Visitor, Vehicle, UserSession, Announcement, AmenityBooking, GymTheatreLog, DailyHelper, AbsenceLog, EssentialContact } from '../types';
 import { api, detectServerEnvironment } from '../lib/api';
 import { db, collection, doc, setDoc, addDoc, getDocs, onSnapshot, updateDoc, deleteDoc, query, where, orderBy } from '../lib/firebase';
+import { compressImage } from '../lib/imageCompressor';
 
 import VisitorsSection from './resident/VisitorsSection';
 import DirectorySection from './resident/DirectorySection';
@@ -218,6 +219,7 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   // Bottom Bar Main Tabs & Sub-sections
   const [activeMainTab, setActiveMainTab] = useState<'community' | 'personal'>('community');
   const [activeSubSection, setActiveSubSection] = useState<string | null>(null);
+  const [lastVisitedSubSection, setLastVisitedSubSection] = useState<string | null>(null);
 
   // New persistent states
   const [amenityBookings, setAmenityBookings] = useState<AmenityBooking[]>([]);
@@ -338,6 +340,19 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
       unsubSocietyNotifs();
     };
   }, []);
+
+  // Smoothly restore the user's scroll position when they return to the main dashboard from any block
+  useEffect(() => {
+    if (activeSubSection === null && lastVisitedSubSection) {
+      const timer = setTimeout(() => {
+        const element = document.getElementById(`block-${lastVisitedSubSection}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [activeSubSection, lastVisitedSubSection]);
 
   // Amenities Function booking form states
   const [fPropertyName, setFPropertyName] = useState<string>('Clubhouse Party Hall');
@@ -522,15 +537,17 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      if (e.target?.result) {
-        setExitPhotoBase64(e.target.result as string);
+    // Compress the live selfie image to keep database payload ultra-lightweight and prevent size limit crashes
+    compressImage(file, 500, 500, 0.5)
+      .then((compressedBase64) => {
+        setExitPhotoBase64(compressedBase64);
         setExitPhotoTimeError(false);
         setGymTheatreError('');
-      }
-    };
-    reader.readAsDataURL(file);
+      })
+      .catch((err) => {
+        console.error('Exit photo compression failed:', err);
+        setGymTheatreError('Failed to process image compression.');
+      });
   };
 
   // Confirm Check Out with Image upload
@@ -1239,7 +1256,11 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
               
               {/* Block 1: Gate Visitors */}
               <div
-                onClick={() => setActiveSubSection('visitors')}
+                id="block-visitors"
+                onClick={() => {
+                  setLastVisitedSubSection('visitors');
+                  setActiveSubSection('visitors');
+                }}
                 className="bg-white rounded-3xl p-5 border border-slate-200/60 shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group"
               >
                 <div className="flex items-center justify-between w-full">
@@ -1260,7 +1281,11 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
 
               {/* Block 2: Complaint Box (formerly Notice Board) */}
               <div
-                onClick={() => setActiveSubSection('complaints')}
+                id="block-complaints"
+                onClick={() => {
+                  setLastVisitedSubSection('complaints');
+                  setActiveSubSection('complaints');
+                }}
                 className="bg-white rounded-3xl p-5 border border-slate-200/60 shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group"
               >
                 <div className="flex items-center justify-between w-full">
@@ -1281,7 +1306,11 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
 
               {/* Block 3: Resident Directory */}
               <div
-                onClick={() => setActiveSubSection('directory')}
+                id="block-directory"
+                onClick={() => {
+                  setLastVisitedSubSection('directory');
+                  setActiveSubSection('directory');
+                }}
                 className="bg-white rounded-3xl p-5 border border-slate-200/60 shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group"
               >
                 <div className="flex items-center justify-between w-full">
@@ -1302,7 +1331,11 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
 
               {/* Block 4: Amenities Bookings */}
               <div
-                onClick={() => setActiveSubSection('amenity')}
+                id="block-amenity"
+                onClick={() => {
+                  setLastVisitedSubSection('amenity');
+                  setActiveSubSection('amenity');
+                }}
                 className="bg-white rounded-3xl p-5 border border-slate-200/60 shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group"
               >
                 <div className="flex items-center justify-between w-full">
@@ -1323,7 +1356,11 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
 
               {/* Block 5: Local Services */}
               <div
-                onClick={() => setActiveSubSection('services')}
+                id="block-services"
+                onClick={() => {
+                  setLastVisitedSubSection('services');
+                  setActiveSubSection('services');
+                }}
                 className="bg-white rounded-3xl p-5 border border-slate-200/60 shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group"
               >
                 <div className="flex items-center justify-between w-full">
@@ -1344,7 +1381,11 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
 
               {/* Block 6: Help & Financial */}
               <div
-                onClick={() => setActiveSubSection('helpdesk')}
+                id="block-helpdesk"
+                onClick={() => {
+                  setLastVisitedSubSection('helpdesk');
+                  setActiveSubSection('helpdesk');
+                }}
                 className="bg-white rounded-3xl p-5 border border-slate-200/60 shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group"
               >
                 <div className="flex items-center justify-between w-full">
@@ -1365,8 +1406,12 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
 
               {/* Block 7: Building Services */}
               <div
-                onClick={() => setActiveSubSection('buildingservices')}
-                className="bg-white rounded-3xl p-5 border border-slate-200/60 shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group"
+                id="block-buildingservices"
+                onClick={() => {
+                  setLastVisitedSubSection('buildingservices');
+                  setActiveSubSection('buildingservices');
+                }}
+                className="bg-white rounded-3xl p-5 border border-[#242A66]/10 shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group"
               >
                 <div className="flex items-center justify-between w-full">
                   <div className="w-11 h-11 rounded-full bg-[#4F46E5] text-white flex items-center justify-center shrink-0 shadow-sm">
