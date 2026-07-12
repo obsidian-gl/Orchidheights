@@ -169,6 +169,32 @@ export default function App() {
     }
   }, [session]);
 
+  // Synchronize current user session details to Cache Storage for PWA Service Worker background access
+  useEffect(() => {
+    if ('caches' in window) {
+      if (session && (session.role === 'owner' || session.role === 'admin') && session.wing && session.flatNo) {
+        const data = JSON.stringify({
+          wing: session.wing,
+          flatNo: session.flatNo,
+          role: session.role
+        });
+        caches.open('orchid-user-cache').then((cache) => {
+          cache.put('/current-user.json', new Response(data));
+          if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({ type: 'USER_SESSION_UPDATED' });
+          }
+        }).catch((err) => console.warn('Cache write failed:', err));
+      } else {
+        caches.open('orchid-user-cache').then((cache) => {
+          cache.delete('/current-user.json');
+          if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({ type: 'USER_SESSION_UPDATED' });
+          }
+        }).catch((err) => console.warn('Cache delete failed:', err));
+      }
+    }
+  }, [session]);
+
   const handleLoginSuccess = (userSession: UserSession) => {
     setSession(userSession);
     localStorage.setItem('orchid_gate_session', JSON.stringify(userSession));

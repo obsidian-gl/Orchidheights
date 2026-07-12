@@ -64,6 +64,7 @@ interface AmenitiesSectionProps {
   // Notification tab override prop
   activeTabOverride?: 'bookings' | 'gym_theatre' | 'movies' | null;
   onClearOverride?: () => void;
+  role?: string;
 }
 
 export default function AmenitiesSection({
@@ -99,7 +100,8 @@ export default function AmenitiesSection({
   fParkingRequest,
   setFParkingRequest,
   activeTabOverride,
-  onClearOverride
+  onClearOverride,
+  role = 'owner'
 }: AmenitiesSectionProps) {
   const myFlatId = `${wing}-${flatNo}`;
   const THRESHOLD = 49;
@@ -575,13 +577,15 @@ export default function AmenitiesSection({
               <span>Back to Menu</span>
             </button>
             <div className="flex items-center gap-2">
-              <button
-                onClick={handleDownloadMoviesCSV}
-                className="px-2.5 py-1 border border-slate-200 hover:border-slate-300 rounded-xl text-[9px] font-black uppercase text-slate-600 transition flex items-center gap-1 cursor-pointer select-none"
-              >
-                <Download className="w-3 h-3" />
-                <span>Export CSV</span>
-              </button>
+              {role === 'admin' && (
+                <button
+                  onClick={handleDownloadMoviesCSV}
+                  className="px-2.5 py-1 border border-slate-200 hover:border-slate-300 rounded-xl text-[9px] font-black uppercase text-slate-600 transition flex items-center gap-1 cursor-pointer select-none"
+                >
+                  <Download className="w-3 h-3" />
+                  <span>Export CSV</span>
+                </button>
+              )}
               <button
                 onClick={() => setShowAddMovieForm(!showAddMovieForm)}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1 rounded-xl text-[9px] font-black uppercase transition flex items-center gap-1 cursor-pointer select-none shadow-xs"

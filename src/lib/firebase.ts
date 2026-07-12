@@ -517,6 +517,36 @@ export async function respondToVisitorRequest(
       respondedBy: updated.respondedBy,
       rejectReason: updated.rejectReason
     }, { merge: true });
+
+    // Find and update the corresponding society notification log so the alerts panel displays the live response
+    try {
+      const societyNotificationsCol = collection(db, 'society_notifications');
+      const q = query(societyNotificationsCol, where('metadata.visitorId', '==', visitorId));
+      const societyNotifSnap = await getDocs(q);
+      
+      for (const docSnap of societyNotifSnap.docs) {
+        const notifData = docSnap.data();
+        const newTitle = `🚪 Gate Visitor: ${currentVisitor.fullName} (${status.toUpperCase()})`;
+        const newMsg = status === 'approved'
+          ? `Visitor ${currentVisitor.fullName} (${currentVisitor.guestType}) was APPROVED for entry to Flat ${currentVisitor.wing}-${currentVisitor.flatNo} by ${respondedBy || 'Resident'} for ${currentVisitor.reason}.`
+          : `Visitor ${currentVisitor.fullName} (${currentVisitor.guestType}) was REJECTED for entry to Flat ${currentVisitor.wing}-${currentVisitor.flatNo} by ${respondedBy || 'Resident'}.${rejectReason ? ' Reason: ' + rejectReason : ''}`;
+        
+        await setDoc(doc(db, 'society_notifications', docSnap.id), {
+          title: newTitle,
+          message: newMsg,
+          status: status,
+          metadata: {
+            ...notifData.metadata,
+            status: status,
+            respondedTime: updated.respondedTime,
+            respondedBy: updated.respondedBy,
+            rejectReason: updated.rejectReason
+          }
+        }, { merge: true });
+      }
+    } catch (e) {
+      console.warn('Failed to update society notifications log:', e);
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `visitors/${visitorId}`);
   }

@@ -925,8 +925,13 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
       {/* Admin Panel Header Banner */}
       <div className="bg-gradient-to-tr from-slate-900 to-indigo-950 p-6 rounded-2xl text-white shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4 border border-slate-800">
         <div className="flex items-center space-x-4">
-          <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-3 rounded-xl shadow">
-            <ShieldCheck className="w-6 h-6 animate-pulse" />
+          <div className="w-14 h-14 rounded-2xl overflow-hidden shadow-lg shrink-0 bg-white border border-slate-700 flex items-center justify-center p-1">
+            <img 
+              src="https://i.ibb.co/zT5tpcdY/1000296229-1.png" 
+              alt="Orchid Heights Logo" 
+              className="w-full h-full object-contain rounded-xl"
+              referrerPolicy="no-referrer"
+            />
           </div>
           <div>
             <h2 className="font-display font-black text-xl tracking-tight">Orchid Heights Admin Suite</h2>

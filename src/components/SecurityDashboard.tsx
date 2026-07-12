@@ -358,14 +358,10 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
     }
   };
 
-  // Reset helper selections when guestType is changed
-  useEffect(() => {
+  // Reset helper selections helper selection state manually if needed, but do not clear visitor input fields on guestType change
+  const clearHelperSelections = () => {
     setSelectedHelperId(null);
-    setFullName('');
-    setMobileNumber('');
-    setPhotoUrl('');
-    setSelectedFlats([`${wing}-${flatNo}`]);
-  }, [guestType]);
+  };
 
   const handleRegisterVisitor = async (e: React.FormEvent) => {
     e.preventDefault();

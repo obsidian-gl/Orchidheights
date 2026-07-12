@@ -45,8 +45,8 @@ const playHighFrequencyAlarm = () => {
       osc.frequency.setValueAtTime(toggle ? 3200 : 2800, now);
       
       gain.gain.setValueAtTime(0, now);
-      gain.gain.linearRampToValueAtTime(0.4, now + 0.05);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+      gain.gain.linearRampToValueAtTime(1.0, now + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
       
       osc.connect(gain);
       gain.connect(ctx.destination);
@@ -216,6 +216,26 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   // Rejection State
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectReasonText, setRejectReasonText] = useState<string>('');
+
+  // Notification permission tracking state
+  const [notifPermission, setNotifPermission] = useState<string>(() => {
+    return 'Notification' in window ? Notification.permission : 'denied';
+  });
+
+  const handleRequestPermission = () => {
+    if ('Notification' in window) {
+      Notification.requestPermission().then((perm) => {
+        setNotifPermission(perm);
+        if (perm === 'granted') {
+          alert('🎉 Thank you! Notifications are now enabled. You will receive real-time visitor alerts even when the app is closed.');
+        } else {
+          alert('⚠️ Permission not granted. Please enable notifications in your browser/app settings to receive visitor alerts.');
+        }
+      }).catch(err => {
+        console.warn('Error requesting permission:', err);
+      });
+    }
+  };
 
   // Bottom Bar Main Tabs & Sub-sections
   const [activeMainTab, setActiveMainTab] = useState<'community' | 'personal'>('community');
@@ -1093,6 +1113,32 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
 
   return (
     <div className="space-y-6 text-slate-800 pb-24 text-left">
+
+      {/* Prominent Notification Enable Banner if permission not granted */}
+      {notifPermission !== 'granted' && (
+        <div className="mx-4 mt-2 bg-gradient-to-r from-amber-500/10 via-rose-500/10 to-amber-500/10 border border-amber-500/20 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-md">
+          <div className="flex items-center space-x-3">
+            <span className="relative flex h-3 w-3 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
+            </span>
+            <div>
+              <p className="text-xs font-bold text-slate-950 flex items-center gap-1.5">
+                🔔 Real-time Gate Notifications are Disabled
+              </p>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Please allow notification permissions to instantly receive and approve/reject visitor requests at the gate, even when the app is closed!
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleRequestPermission}
+            className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-slate-950 text-[11px] font-extrabold uppercase tracking-wider px-4 py-2 rounded-xl transition shadow active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
+          >
+            Enable Notifications
+          </button>
+        </div>
+      )}
       
       {/* Top Header Bar & Identity Card matching the reference image exactly */}
       {activeSubSection === null && (
@@ -1113,13 +1159,23 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
 
             {/* Top Interactive Row inside the Banner */}
             <div className="relative z-10 flex items-center justify-between w-full">
-              <div>
-                <h1 className="font-sans font-black text-white text-base leading-tight uppercase tracking-tight shadow-sm">
-                  Orchid Heights
-                </h1>
-                <p className="text-[9px] text-indigo-200 font-bold uppercase tracking-widest font-sans">
-                  Owners Association • ઓર્કીડ સોસાયટી
-                </p>
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl overflow-hidden shadow bg-white/95 p-0.5 shrink-0">
+                  <img 
+                    src="https://i.ibb.co/zT5tpcdY/1000296229-1.png" 
+                    alt="Orchid Heights Logo" 
+                    className="w-full h-full object-contain"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+                <div>
+                  <h1 className="font-sans font-black text-white text-base leading-tight uppercase tracking-tight shadow-sm">
+                    Orchid Heights
+                  </h1>
+                  <p className="text-[9px] text-indigo-200 font-bold uppercase tracking-widest font-sans">
+                    Owners Association • ઓર્કીડ સોસાયટી
+                  </p>
+                </div>
               </div>
 
               <div className="flex items-center gap-2.5">
@@ -1448,33 +1504,6 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                 </div>
               </div>
 
-              {/* Block 7: Building Services */}
-              <div
-                id="block-buildingservices"
-                onClick={() => {
-                  setLastVisitedSubSection('buildingservices');
-                  setActiveSubSection('buildingservices');
-                }}
-                className={`bg-white rounded-3xl p-5 border shadow-sm flex flex-col justify-between min-h-[140px] text-left hover:shadow-md transition cursor-pointer relative group ${
-                  highlightBlock === 'buildingservices' ? 'ring-2 ring-indigo-500 ring-offset-2 animate-pulse bg-indigo-50/20 border-indigo-300' : 'border-[#242A66]/10'
-                }`}
-              >
-                <div className="flex items-center justify-between w-full">
-                  <div className="w-11 h-11 rounded-full bg-[#4F46E5] text-white flex items-center justify-center shrink-0 shadow-sm">
-                    <Wrench className="w-5 h-5" />
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />
-                </div>
-                <div className="mt-4">
-                  <h4 className="font-display font-black text-slate-800 text-sm tracking-tight leading-snug">
-                    Building Services
-                  </h4>
-                  <p className="text-[10px] text-slate-400 font-medium leading-normal mt-1">
-                    Lift, Plumber, Electrician etc.
-                  </p>
-                </div>
-              </div>
-
               {/* Block 8: Society Alerts & Logs (Dedicated Notifications Block - 2-week history) */}
               <div
                 id="block-notifications"
@@ -1510,13 +1539,27 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
         ) : (
           /* Sub-section Detail Screen Pane with BACK button */
           <div className="space-y-6">
-            <button
-              onClick={() => setActiveSubSection(null)}
-              className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl flex items-center space-x-1.5 transition cursor-pointer select-none border border-slate-200 shadow-sm"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Back to Dashboard</span>
-            </button>
+            <div className="flex items-center justify-between">
+              <button
+                onClick={() => setActiveSubSection(null)}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl flex items-center space-x-1.5 transition cursor-pointer select-none border border-slate-200 shadow-sm"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back to Dashboard</span>
+              </button>
+
+              <div className="flex items-center space-x-2">
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider hidden sm:block">Orchid Heights</span>
+                <div className="w-8 h-8 rounded-lg overflow-hidden border border-slate-200 shadow-xs flex items-center justify-center bg-white p-0.5">
+                  <img 
+                    src="https://i.ibb.co/zT5tpcdY/1000296229-1.png" 
+                    alt="Orchid Heights Logo" 
+                    className="w-full h-full object-contain"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+              </div>
+            </div>
 
             {activeSubSection === 'visitors' && (
               <VisitorsSection
@@ -1581,6 +1624,7 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                 fParkingRequest={fParkingRequest}
                 setFParkingRequest={setFParkingRequest}
                 activeCheckInLog={activeCheckInLog}
+                role={session.role}
               />
             )}
 
@@ -1652,10 +1696,6 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
               />
             )}
 
-            {activeSubSection === 'buildingservices' && (
-              <BuildingServicesSection contacts={essentialContacts} />
-            )}
-
             {activeSubSection === 'notifications' && (
               <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-5 text-left">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3 font-mono">
@@ -1696,19 +1736,69 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                     <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
                       {filteredNotifs.map((notif) => {
                         const isDismissed = dismissedNotifIds.includes(notif.id);
+                        
+                        // Determine background, border, text and badge colors based on notification type and status
+                        let colorClasses = 'bg-slate-50/70 border-slate-200 text-slate-500';
+                        let badgeText = 'Alert';
+                        let badgeColor = 'bg-slate-100 text-slate-600';
+
+                        if (!isDismissed) {
+                          switch (notif.type) {
+                            case 'notice':
+                              colorClasses = 'bg-blue-50/40 border-blue-100 text-slate-800 ring-1 ring-blue-50/30';
+                              badgeText = 'Notice';
+                              badgeColor = 'bg-blue-100 text-blue-700 font-bold';
+                              break;
+                            case 'financial':
+                              colorClasses = 'bg-emerald-50/40 border-emerald-100 text-slate-800 ring-1 ring-emerald-50/30';
+                              badgeText = 'Financial';
+                              badgeColor = 'bg-emerald-100 text-emerald-700 font-bold';
+                              break;
+                            case 'complaint':
+                              colorClasses = 'bg-rose-50/40 border-rose-100 text-slate-800 ring-1 ring-rose-50/30';
+                              badgeText = 'Complaint';
+                              badgeColor = 'bg-rose-100 text-rose-700 font-bold';
+                              break;
+                            case 'movie_schedule':
+                              colorClasses = 'bg-purple-50/40 border-purple-100 text-slate-800 ring-1 ring-purple-50/30';
+                              badgeText = 'Theatre';
+                              badgeColor = 'bg-purple-100 text-purple-700 font-bold';
+                              break;
+                            case 'visitor':
+                              const status = notif.status || notif.metadata?.status || 'pending';
+                              if (status === 'approved') {
+                                colorClasses = 'bg-emerald-50/60 border-emerald-200 text-slate-800 ring-1 ring-emerald-50 shadow-xs';
+                                badgeText = 'Visitor (Approved)';
+                                badgeColor = 'bg-emerald-100 text-emerald-800 font-bold';
+                              } else if (status === 'rejected') {
+                                colorClasses = 'bg-rose-50/60 border-rose-200 text-slate-800 ring-1 ring-rose-50 shadow-xs';
+                                badgeText = 'Visitor (Rejected)';
+                                badgeColor = 'bg-rose-100 text-rose-800 font-bold';
+                              } else {
+                                colorClasses = 'bg-amber-50/60 border-amber-200 text-slate-800 ring-1 ring-amber-50 shadow-xs';
+                                badgeText = 'Visitor (Pending)';
+                                badgeColor = 'bg-amber-100 text-amber-800 font-bold';
+                              }
+                              break;
+                            default:
+                              colorClasses = 'bg-white border-slate-200 text-slate-800';
+                              badgeText = 'System';
+                              badgeColor = 'bg-slate-100 text-slate-700';
+                          }
+                        }
+
                         return (
                           <div 
                             key={notif.id} 
-                            className={`p-4 rounded-2xl border transition flex items-start gap-3 justify-between ${
-                              isDismissed 
-                                ? 'bg-slate-50/70 border-slate-200 text-slate-500' 
-                                : 'bg-white border-red-100 shadow-xs text-slate-800 ring-1 ring-red-50/50'
-                            }`}
+                            className={`p-4 rounded-2xl border transition flex items-start gap-3 justify-between ${colorClasses}`}
                           >
-                            <div className="space-y-1 text-left min-w-0 flex-1">
-                              <div className="flex items-center gap-2">
+                            <div className="space-y-1.5 text-left min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
                                 <span className="font-black text-xs uppercase tracking-tight">
                                   {notif.title}
+                                </span>
+                                <span className={`text-[9px] uppercase px-1.5 py-0.5 rounded ${badgeColor}`}>
+                                  {badgeText}
                                 </span>
                                 {!isDismissed && (
                                   <span className="w-1.5 h-1.5 bg-rose-600 rounded-full shrink-0" />
@@ -1717,6 +1807,23 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                               <p className="text-[11.5px] leading-relaxed font-medium font-sans">
                                 {notif.message}
                               </p>
+
+                              {/* Display visitor photo if present in metadata */}
+                              {notif.type === 'visitor' && notif.metadata?.photoUrl && (
+                                <div className="mt-2 flex items-center gap-3 bg-white/60 p-2 rounded-xl border border-slate-100 max-w-sm">
+                                  <img 
+                                    src={notif.metadata.photoUrl} 
+                                    alt="Visitor Photo" 
+                                    className="w-10 h-10 rounded-lg object-cover border bg-slate-100 shrink-0" 
+                                    referrerPolicy="no-referrer"
+                                  />
+                                  <div className="text-[10px]">
+                                    <p className="font-bold text-slate-800 uppercase">{notif.metadata.fullName}</p>
+                                    <p className="text-slate-500 font-mono">{notif.metadata.mobileNumber} • {notif.metadata.visitorCount || 1} guest(s)</p>
+                                  </div>
+                                </div>
+                              )}
+
                               <p className="text-[9px] text-slate-400 font-mono mt-1">
                                 {new Date(notif.timestamp).toLocaleString('en-IN', {
                                   day: '2-digit',

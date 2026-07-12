@@ -28,8 +28,13 @@ function AdminLoginForm({ onLoginSuccess, onGoBack }: AdminLoginFormProps) {
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 md:p-8 shadow-2xl space-y-6">
         <div className="text-center space-y-2">
-          <div className="inline-block bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 p-3.5 rounded-2xl shadow-inner mb-2">
-            <span className="font-sans font-black text-xl tracking-tight text-indigo-400">OH</span>
+          <div className="inline-flex bg-white border border-slate-800 p-1 rounded-2xl shadow-md mb-2 w-20 h-20 items-center justify-center">
+            <img 
+              src="https://i.ibb.co/zT5tpcdY/1000296229-1.png" 
+              alt="Orchid Heights Logo" 
+              className="w-full h-full object-contain rounded-xl"
+              referrerPolicy="no-referrer"
+            />
           </div>
           <h2 className="font-display font-black text-xl text-white tracking-tight">Private Administration</h2>
           <p className="text-xs text-slate-400">Enter secure keys to access the Orchid Heights control center.</p>
@@ -161,8 +166,13 @@ export default function AdminPage({
       <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-40 shadow-sm py-4 text-left">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center">
           <div className="flex items-center space-x-3">
-            <div className="bg-indigo-600 p-2 rounded-xl text-white shadow-md">
-              <span className="text-xs font-black">OH</span>
+            <div className="w-10 h-10 rounded-xl overflow-hidden shadow-md shrink-0 bg-white border border-slate-800 flex items-center justify-center p-0.5">
+              <img 
+                src="https://i.ibb.co/zT5tpcdY/1000296229-1.png" 
+                alt="Orchid Heights Logo" 
+                className="w-full h-full object-contain rounded-lg"
+                referrerPolicy="no-referrer"
+              />
             </div>
             <div>
               <h1 className="font-display font-bold text-sm sm:text-base text-white tracking-tight">

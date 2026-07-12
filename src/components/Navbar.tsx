@@ -44,8 +44,13 @@ export default function Navbar({ session, onLogout, activeTab, setActiveTab }: N
         <div className="flex justify-between h-16 items-center">
           {/* Brand Logo & Name */}
           <div className="flex items-center space-x-3">
-            <div className="bg-gradient-to-tr from-indigo-600 to-indigo-800 p-2 rounded-xl text-white shadow-md">
-              <Building className="w-6 h-6" />
+            <div className="w-11 h-11 rounded-xl overflow-hidden shadow-md shrink-0 bg-white border border-slate-200 flex items-center justify-center p-0.5">
+              <img 
+                src="https://i.ibb.co/zT5tpcdY/1000296229-1.png" 
+                alt="Orchid Heights Logo" 
+                className="w-full h-full object-contain rounded-lg"
+                referrerPolicy="no-referrer"
+              />
             </div>
             <div>
               <div className="flex items-baseline space-x-1">

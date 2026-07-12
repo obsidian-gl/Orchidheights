@@ -153,8 +153,13 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         
         {/* Heading Section */}
         <div className="text-center mb-8">
-          <div className="inline-flex bg-gradient-to-tr from-indigo-600 to-indigo-800 text-white p-3.5 rounded-2xl shadow-md mb-3">
-            <Home className="w-7 h-7" />
+          <div className="inline-flex bg-white border border-slate-200 p-1 rounded-2xl shadow-md mb-3 w-20 h-20 items-center justify-center">
+            <img 
+              src="https://i.ibb.co/zT5tpcdY/1000296229-1.png" 
+              alt="Orchid Heights Logo" 
+              className="w-full h-full object-contain rounded-xl"
+              referrerPolicy="no-referrer"
+            />
           </div>
           <h1 className="font-display font-bold text-2xl text-slate-900 tracking-tight">Orchid Heights</h1>
           <p className="text-sm text-slate-500 font-medium">ઓર્કીડ હાઇટ્સ સોસાયટી</p>
