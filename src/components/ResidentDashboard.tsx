@@ -121,6 +121,39 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   // Active visitor request state
   const [activePoll, setActivePoll] = useState<Visitor[]>([]);
   const [isAlarmActive, setIsAlarmActive] = useState<boolean>(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState<boolean>(false);
+  const [activeSosAlerts, setActiveSosAlerts] = useState<any[]>([]);
+  const [sosHoldProgress, setSosHoldProgress] = useState<number>(0);
+  const [isHoldingSos, setIsHoldingSos] = useState<boolean>(false);
+
+  const holdStartTimeRef = useRef<number>(0);
+  const holdAnimationRef = useRef<number | null>(null);
+
+  // Subscribe to real-time SOS Alerts
+  useEffect(() => {
+    const qSos = query(collection(db, 'sos_alerts'), where('status', '==', 'active'));
+    const unsubscribe = onSnapshot(qSos, (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach((doc) => {
+        list.push({ id: doc.id, ...doc.data() });
+      });
+      setActiveSosAlerts(list);
+    }, (error) => {
+      console.error('Error listening to SOS alerts:', error);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Sync SOS and visitor alarms
+  useEffect(() => {
+    if (activeSosAlerts.length > 0) {
+      playHighFrequencyAlarm();
+    } else {
+      if (activePoll.length === 0) {
+        stopHighFrequencyAlarm();
+      }
+    }
+  }, [activeSosAlerts, activePoll]);
 
   useEffect(() => {
     alarmStateListener = (active) => {
@@ -898,6 +931,55 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
     }
   };
 
+  const startSosHold = (e: React.MouseEvent | React.TouchEvent) => {
+    cancelSosHold();
+
+    setIsHoldingSos(true);
+    setSosHoldProgress(0);
+    holdStartTimeRef.current = Date.now();
+
+    const updateProgress = () => {
+      const elapsed = Date.now() - holdStartTimeRef.current;
+      const pct = Math.min(100, (elapsed / 5000) * 100);
+      setSosHoldProgress(pct);
+
+      if (elapsed >= 5000) {
+        triggerGlobalSosAlert();
+        cancelSosHold();
+      } else {
+        holdAnimationRef.current = requestAnimationFrame(updateProgress);
+      }
+    };
+
+    holdAnimationRef.current = requestAnimationFrame(updateProgress);
+  };
+
+  const cancelSosHold = () => {
+    setIsHoldingSos(false);
+    setSosHoldProgress(0);
+    if (holdAnimationRef.current) {
+      cancelAnimationFrame(holdAnimationRef.current);
+      holdAnimationRef.current = null;
+    }
+  };
+
+  const triggerGlobalSosAlert = async () => {
+    try {
+      playHighFrequencyAlarm();
+      const payload = {
+        flatId: `${wing}-${flatNo}`,
+        triggeredBy: fullName,
+        triggeredAt: new Date().toISOString(),
+        status: 'active'
+      };
+      await addDoc(collection(db, 'sos_alerts'), payload);
+      alert("🚨 EMERGENCY SOS BROADCASTED! Society-wide emergency alarm has been triggered and sent to all owners and guards.");
+    } catch (err: any) {
+      console.error('Failed to trigger SOS:', err);
+      alert('🔴 Failed to broadcast SOS alert. Playing local high-frequency alarm only.');
+    }
+  };
+
   const fullName = myOwnerData?.nameEn || 'RAHUL JASHVANTRAI POPAT';
   const firstName = fullName.split(' ')[0] || 'Rahul';
   const nameGu = myOwnerData?.nameGu || 'રાહુલ જશવંતરાય પોપટ';
@@ -906,53 +988,92 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   return (
     <div className="space-y-6 text-slate-800 pb-24 text-left">
       
-      {/* Top Header Panel matching the reference image */}
+      {/* Top Header Bar & Identity Card matching the reference image exactly */}
       {activeSubSection === null && (
-        <div className="p-4 pt-6 pb-2 text-left space-y-4">
+        <div className="p-4 pt-6 pb-2 text-left space-y-5">
+          {/* Top Brand Bar */}
           <div className="flex items-center justify-between w-full">
-            <div className="w-12 h-12 rounded-full overflow-hidden border border-slate-200 shadow-sm bg-slate-100 flex items-center justify-center shrink-0">
-              <img
-                src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&h=120&fit=crop"
-                alt="Profile"
-                className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
-              />
+            <div>
+              <h1 className="font-sans font-black text-slate-800 text-lg leading-tight uppercase tracking-tight">
+                Orchid Heights
+              </h1>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-sans">
+                Owners Association • ઓર્કીડ સોસાયટી
+              </p>
             </div>
-            <div className="flex items-center gap-2.5">
-              {/* SOS Button */}
+            
+            <div className="flex items-center gap-3">
+              {/* Hold to SOS Button */}
               <button
-                onClick={() => {
-                  if (confirm("🚨 EMERGENCY SOS BROADCAST: Trigger society-wide emergency assistance alarm to security guards?")) {
-                    playHighFrequencyAlarm();
-                    alert("🔴 High Frequency SOS Alarm has been triggered. Please contact society guard station at +91 99999-00000 immediately.");
-                  }
-                }}
-                className="w-10 h-10 rounded-full bg-[#1E1B4B] hover:bg-[#312E81] text-white text-[10px] font-black tracking-wider flex items-center justify-center shadow-md transition transform active:scale-95 cursor-pointer"
-                title="Emergency SOS Alarm"
+                onMouseDown={startSosHold}
+                onMouseUp={cancelSosHold}
+                onMouseLeave={cancelSosHold}
+                onTouchStart={startSosHold}
+                onTouchEnd={cancelSosHold}
+                onTouchCancel={cancelSosHold}
+                className="relative w-12 h-12 rounded-full bg-red-600 hover:bg-red-700 text-white font-sans font-black text-[11px] tracking-wider flex items-center justify-center shadow-lg transition-all transform active:scale-95 cursor-pointer overflow-hidden select-none"
+                title="Hold for 5 seconds to broadcast SOS alarm"
               >
-                SOS
-              </button>
-              {/* Notification bell with badge */}
-              <div className="relative p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full transition cursor-pointer">
-                <Bell className="w-4 h-4" />
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#7C3AED] text-white text-[8px] font-extrabold rounded-full flex items-center justify-center shadow">
-                  {activePoll.length > 0 ? activePoll.length : '2'}
+                {isHoldingSos && (
+                  <div 
+                    className="absolute bottom-0 left-0 right-0 bg-red-900 transition-all duration-75"
+                    style={{ height: `${sosHoldProgress}%`, opacity: 0.8 }}
+                  />
+                )}
+                <span className="relative z-10 font-black">
+                  {isHoldingSos ? `${Math.ceil((5000 - (sosHoldProgress / 100) * 5000) / 1000)}s` : 'SOS'}
                 </span>
-              </div>
+              </button>
+
+              {/* Notification bell with badge */}
+              <button
+                onClick={() => setIsNotificationsOpen(true)}
+                className="relative p-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full transition cursor-pointer shadow-sm border border-slate-200/50"
+                title="Open Notifications Panel"
+              >
+                <Bell className="w-5 h-5" />
+                {(activePoll.length + activeSosAlerts.length) > 0 && (
+                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-[#7C3AED] text-white text-[9px] font-black rounded-full flex items-center justify-center shadow animate-bounce">
+                    {activePoll.length + activeSosAlerts.length}
+                  </span>
+                )}
+              </button>
             </div>
           </div>
 
-          <div className="space-y-0.5">
-            <h2 className="font-display font-black text-2xl text-slate-800 tracking-tight leading-none">
-              Hi {firstName}
-            </h2>
-            <div className="pt-1.5 space-y-0.5">
-              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">{flatStr} Resident Owner</p>
-              <p className="text-sm font-black text-slate-700 uppercase leading-none">{fullName}</p>
-              {nameGu && (
-                <p className="text-xs font-semibold text-slate-400 font-sans">{nameGu}</p>
-              )}
+          {/* High-fidelity identity card mimicking the uploaded reference image exactly */}
+          <div className="relative overflow-hidden w-full rounded-[32px] bg-gradient-to-b from-[#0F102B] via-[#0E1026] to-[#0A0B1A] p-8 text-center text-white border border-[#242A66]/30 shadow-2xl flex flex-col items-center justify-center min-h-[220px] max-w-lg mx-auto">
+            {/* Vector silhouette overlay (profile outline icon overlapping the right side) */}
+            <div className="absolute right-4 bottom-2 opacity-[0.04] pointer-events-none select-none">
+              <svg className="w-52 h-52 text-indigo-400" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <circle cx="50" cy="32" r="18" />
+                <path d="M12,85 C12,58 30,55 50,55 C70,55 88,58 88,85" stroke-linecap="round" />
+              </svg>
             </div>
+            
+            {/* Initials Avatar Badge centered */}
+            <div className="w-16 h-16 rounded-full border border-white/20 bg-white/5 flex items-center justify-center text-white font-sans font-medium text-2xl select-none mb-4 shadow-inner">
+              {firstName.substring(0, 2).toUpperCase()}
+            </div>
+
+            {/* Blue-violet Role Pill */}
+            <div className="inline-flex items-center bg-[#242A66]/70 border border-[#3C47A3]/50 px-5 py-1.5 rounded-full mb-3 shadow-sm select-none">
+              <span className="text-[#A5B4FC] text-[10px] font-sans font-bold uppercase tracking-widest">
+                FLAT {wing}-{flatNo} RESIDENT OWNER
+              </span>
+            </div>
+
+            {/* Bold Upper-case Name */}
+            <h3 className="text-white font-sans font-black text-xl sm:text-2xl tracking-wide uppercase leading-tight max-w-[90%] z-10">
+              {fullName}
+            </h3>
+
+            {/* Gujarati Subtitle translation */}
+            {nameGu && (
+              <p className="text-[#94A3B8] text-xs sm:text-sm font-semibold tracking-wide mt-2 font-sans z-10">
+                {nameGu}
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -962,6 +1083,66 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
         activeSubSection === null ? (
           /* 6-Tile Bento Grid Dashboard matching the reference image layout */
           <div className="space-y-6">
+            
+            {/* Active SOS Alerts Emergency Panel */}
+            {activeSosAlerts.length > 0 && (
+              <div className="bg-red-600 text-white p-5 rounded-3xl space-y-3 shadow-lg animate-pulse border-2 border-red-400 text-left">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <ShieldAlert className="w-5 h-5 animate-bounce shrink-0" />
+                    <h4 className="font-sans font-black text-sm uppercase tracking-wider">🚨 ACTIVE SOCIETY EMERGENCY (SOS)!</h4>
+                  </div>
+                  <button
+                    onClick={() => stopHighFrequencyAlarm()}
+                    className="bg-white/20 hover:bg-white/30 text-white font-sans font-extrabold px-3 py-1 rounded-xl text-[10px] uppercase select-none transition cursor-pointer"
+                  >
+                    Mute Sound
+                  </button>
+                </div>
+                
+                <div className="space-y-2.5">
+                  {activeSosAlerts.map((sos) => {
+                    const isMySos = sos.flatId === `${wing}-${flatNo}`;
+                    return (
+                      <div key={sos.id} className="bg-black/20 p-3 rounded-2xl flex items-center justify-between text-xs font-semibold">
+                        <div className="pr-2">
+                          <p className="text-white font-bold leading-normal">
+                            <span className="underline font-black">{sos.triggeredBy}</span> of Flat <span className="bg-white/20 px-1.5 py-0.5 rounded font-mono font-black">{sos.flatId}</span> is requesting immediate assistance!
+                          </p>
+                          <p className="text-[10px] text-white/75 mt-0.5 font-mono">
+                            Triggered: {new Date(sos.triggeredAt).toLocaleTimeString()}
+                          </p>
+                        </div>
+                        
+                        {isMySos ? (
+                          <button
+                            onClick={async () => {
+                              if (confirm("Are you sure you want to resolve and clear your SOS emergency alert?")) {
+                                try {
+                                  await updateDoc(doc(db, 'sos_alerts', sos.id), { status: 'resolved' });
+                                } catch (e) {
+                                  console.error('Failed to resolve SOS:', e);
+                                }
+                              }
+                            }}
+                            className="bg-emerald-500 hover:bg-emerald-600 text-white font-sans font-black px-4 py-2 rounded-xl text-[10px] uppercase tracking-wider transition-all select-none shrink-0"
+                          >
+                            I'm Safe
+                          </button>
+                        ) : (
+                          <a
+                            href="tel:+919999900000"
+                            className="bg-white text-red-600 hover:bg-red-50 font-sans font-black px-4 py-2 rounded-xl text-[10px] uppercase tracking-wider transition-all select-none shrink-0 text-center"
+                          >
+                            Call Guard
+                          </a>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             
             {/* Active visitor alarm ringing banner */}
             {isAlarmActive && (
@@ -1343,6 +1524,120 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
           <span className="text-[10px] uppercase tracking-wider font-bold">You (Profile)</span>
         </button>
       </div>
+
+      {/* Notifications Modal Center Overlay */}
+      {isNotificationsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity cursor-pointer"
+            onClick={() => setIsNotificationsOpen(false)}
+          />
+          
+          {/* Modal Container */}
+          <div className="relative bg-white w-full max-w-md rounded-[28px] shadow-2xl border border-slate-100 overflow-hidden z-10 flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center space-x-2">
+                <Bell className="w-5 h-5 text-indigo-600" />
+                <h3 className="font-sans font-black text-base text-slate-800 uppercase tracking-tight">Notification Center</h3>
+              </div>
+              <button
+                onClick={() => setIsNotificationsOpen(false)}
+                className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* List of active items */}
+            <div className="p-5 overflow-y-auto space-y-4">
+              {activeSosAlerts.length === 0 && activePoll.length === 0 && announcements.length === 0 ? (
+                <div className="text-center py-12 space-y-3">
+                  <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto text-slate-300">
+                    <Bell className="w-6 h-6" />
+                  </div>
+                  <p className="text-sm font-semibold text-slate-400">All caught up! No active alerts or notifications.</p>
+                </div>
+              ) : (
+                <>
+                  {/* Active SOS emergencies */}
+                  {activeSosAlerts.map((sos) => (
+                    <div key={sos.id} className="bg-red-50 border border-red-100 p-4 rounded-2xl flex items-start space-x-3 text-left">
+                      <ShieldAlert className="w-5 h-5 text-red-600 shrink-0 mt-0.5 animate-pulse" />
+                      <div className="space-y-1 w-full">
+                        <p className="text-xs font-black text-red-700 uppercase tracking-wider">
+                          🚨 ACTIVE EMERGENCY SOS
+                        </p>
+                        <p className="text-xs text-slate-600 leading-normal">
+                          <span className="font-bold text-red-700">{sos.triggeredBy}</span> of Flat <span className="font-mono bg-red-100 text-red-800 px-1 py-0.5 rounded text-[10px] font-bold">{sos.flatId}</span> has triggered an EMERGENCY SOS alert!
+                        </p>
+                        <p className="text-[10px] text-slate-400 font-mono">
+                          Triggered: {new Date(sos.triggeredAt).toLocaleTimeString()}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Active Gate Visitor Approval Requests */}
+                  {activePoll.map((visitor) => (
+                    <div key={visitor.id} className="bg-amber-50 border border-amber-100 p-4 rounded-2xl flex items-start space-x-3 text-left">
+                      <Users className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                      <div className="space-y-2.5 w-full">
+                        <div>
+                          <p className="text-xs font-black text-amber-800 uppercase tracking-wider">
+                            🚪 Gate Visitor Entry Request
+                          </p>
+                          <p className="text-xs text-slate-600 leading-normal mt-0.5">
+                            <span className="font-bold text-slate-900">{visitor.fullName}</span> ({visitor.guestType}) is waiting at the main society gate.
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setIsNotificationsOpen(false);
+                            setActiveSubSection('visitors');
+                          }}
+                          className="w-full bg-slate-950 hover:bg-slate-900 text-white font-sans font-bold py-2 rounded-xl text-[10px] uppercase tracking-wider transition select-none"
+                        >
+                          Review Request Detail
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Recent Society Announcements */}
+                  {announcements.slice(0, 3).map((notice) => (
+                    <div key={notice.id} className="bg-slate-50 border border-slate-100 p-4 rounded-2xl flex items-start space-x-3 text-left">
+                      <Megaphone className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
+                      <div className="space-y-1 w-full">
+                        <p className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                          📢 NOTICE: {notice.title}
+                        </p>
+                        <p className="text-xs text-slate-500 leading-relaxed line-clamp-2 mt-0.5">
+                          {notice.message}
+                        </p>
+                        <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                          Posted: {new Date(notice.createdAt || '').toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-slate-100 bg-slate-50 text-center">
+              <button
+                onClick={() => setIsNotificationsOpen(false)}
+                className="text-indigo-600 hover:text-indigo-700 font-sans font-extrabold text-xs uppercase tracking-wider transition cursor-pointer select-none"
+              >
+                Close Panel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
