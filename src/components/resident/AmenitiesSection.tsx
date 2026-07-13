@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { 
   Calendar, 
   Dumbbell, 
@@ -25,6 +26,7 @@ import { AmenityBooking, GymTheatreLog } from '../../types';
 import { db, collection, onSnapshot, doc, setDoc, deleteDoc, createSocietyNotification } from '../../lib/firebase';
 import { uploadFileInChunks, downloadChunkedFile } from '../../lib/fileStorage';
 import ChunkedMedia from '../ChunkedMedia';
+import WebcamCapture from '../WebcamCapture';
 
 function MoviePoster({ posterUrl, title }: { posterUrl: string; title: string }) {
   const [src, setSrc] = useState<string>('');
@@ -79,6 +81,7 @@ interface AmenitiesSectionProps {
   handleVoteAmenityBooking: (id: string) => void;
   handleCheckInGymTheatre: (amenity: 'Gym' | 'Theatre') => void;
   handleCheckOutGymTheatreFlow: (log: GymTheatreLog) => void;
+  handleExitPhotoBase64Capture?: (base64: string) => void;
   showExitPhotoModal: boolean;
   setShowExitPhotoModal: (show: boolean) => void;
   exitPhotoBase64: string;
@@ -120,6 +123,7 @@ export default function AmenitiesSection({
   handleVoteAmenityBooking,
   handleCheckInGymTheatre,
   handleCheckOutGymTheatreFlow,
+  handleExitPhotoBase64Capture,
   showExitPhotoModal,
   setShowExitPhotoModal,
   exitPhotoBase64,
@@ -150,15 +154,52 @@ export default function AmenitiesSection({
   const myFlatId = `${wing}-${flatNo}`;
   const THRESHOLD = 49;
 
-  // Sub-Blocks active screen state
-  const [activeSub, setActiveSub] = useState<'menu' | 'gym_theatre' | 'movies' | 'bookings'>('menu');
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Sub-Blocks active screen state initialized from URL path
+  const [activeSub, setActiveSub] = useState<'menu' | 'gym_theatre' | 'movies' | 'bookings'>(() => {
+    const path = window.location.pathname;
+    if (path.includes('gym-theatre')) return 'gym_theatre';
+    if (path.includes('movies') || path.includes('gym-schedule')) return 'movies';
+    if (path.includes('bookings')) return 'bookings';
+    return 'menu';
+  });
+
+  const handleSetSub = (sub: 'menu' | 'gym_theatre' | 'movies' | 'bookings') => {
+    setActiveSub(sub);
+    localStorage.setItem('orchid_amenity_active_sub', sub);
+    if (sub === 'gym_theatre') {
+      navigate('/amenity/gym-theatre');
+    } else if (sub === 'movies') {
+      navigate('/amenity/movies');
+    } else if (sub === 'bookings') {
+      navigate('/amenity/bookings');
+    } else {
+      navigate('/amenity');
+    }
+  };
+
+  // Sync state with URL path changes
+  useEffect(() => {
+    const path = location.pathname;
+    if (path.includes('gym-theatre')) {
+      if (activeSub !== 'gym_theatre') setActiveSub('gym_theatre');
+    } else if (path.includes('movies') || path.includes('gym-schedule')) {
+      if (activeSub !== 'movies') setActiveSub('movies');
+    } else if (path.includes('bookings')) {
+      if (activeSub !== 'bookings') setActiveSub('bookings');
+    } else if (path.startsWith('/amenity') || path.startsWith('/amenities')) {
+      if (activeSub !== 'menu') setActiveSub('menu');
+    }
+  }, [location.pathname]);
 
   // Listen to notification overrides
   useEffect(() => {
     if (activeTabOverride) {
-      if (activeTabOverride === 'bookings') setActiveSub('bookings');
-      if (activeTabOverride === 'gym_theatre') setActiveSub('gym_theatre');
-      if (activeTabOverride === 'movies') setActiveSub('movies');
+      if (activeTabOverride === 'bookings') handleSetSub('bookings');
+      if (activeTabOverride === 'gym_theatre') handleSetSub('gym_theatre');
+      if (activeTabOverride === 'movies') handleSetSub('movies');
       if (onClearOverride) onClearOverride();
     }
   }, [activeTabOverride]);
@@ -168,9 +209,9 @@ export default function AmenitiesSection({
     const handleDeepRedirect = () => {
       const target = localStorage.getItem('orchid_deep_redirect');
       if (target) {
-        if (target === 'bookings') setActiveSub('bookings');
-        if (target === 'gym_theatre') setActiveSub('gym_theatre');
-        if (target === 'movies') setActiveSub('movies');
+        if (target === 'bookings') handleSetSub('bookings');
+        if (target === 'gym_theatre') handleSetSub('gym_theatre');
+        if (target === 'movies') handleSetSub('movies');
         localStorage.removeItem('orchid_deep_redirect');
       }
     };
@@ -379,7 +420,7 @@ export default function AmenitiesSection({
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Sub-Block 1: Gym & Movie Theatre Access Gate */}
             <div
-              onClick={() => setActiveSub('gym_theatre')}
+              onClick={() => handleSetSub('gym_theatre')}
               className="bg-white rounded-3xl p-5 border border-slate-200 hover:border-slate-300 shadow-sm flex flex-col justify-between min-h-[150px] text-left hover:shadow-md transition cursor-pointer relative group"
             >
               <div className="flex items-center justify-between w-full">
@@ -400,7 +441,7 @@ export default function AmenitiesSection({
 
             {/* Sub-Block 2: Movie Theatre Schedule */}
             <div
-              onClick={() => setActiveSub('movies')}
+              onClick={() => handleSetSub('movies')}
               className="bg-white rounded-3xl p-5 border border-slate-200 hover:border-slate-300 shadow-sm flex flex-col justify-between min-h-[150px] text-left hover:shadow-md transition cursor-pointer relative group"
             >
               <div className="flex items-center justify-between w-full">
@@ -421,7 +462,7 @@ export default function AmenitiesSection({
 
             {/* Sub-Block 3: Function Hall Booking Suite */}
             <div
-              onClick={() => setActiveSub('bookings')}
+              onClick={() => handleSetSub('bookings')}
               className="bg-white rounded-3xl p-5 border border-slate-200 hover:border-slate-300 shadow-sm flex flex-col justify-between min-h-[150px] text-left hover:shadow-md transition cursor-pointer relative group"
             >
               <div className="flex items-center justify-between w-full">
@@ -448,7 +489,7 @@ export default function AmenitiesSection({
         <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-5">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <button
-              onClick={() => setActiveSub('menu')}
+              onClick={() => handleSetSub('menu')}
               className="flex items-center space-x-1 text-xs font-bold text-slate-500 hover:text-slate-800 cursor-pointer transition select-none"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -609,12 +650,122 @@ export default function AmenitiesSection({
         </div>
       )}
 
+      {/* Vidaay (Exit Checkout) Modal overlay */}
+      {showExitPhotoModal && activeCheckInLog && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div 
+            onClick={() => setShowExitPhotoModal(false)}
+            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity cursor-pointer"
+          />
+          
+          {/* Modal Content */}
+          <div className="relative bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl max-w-md w-full overflow-hidden space-y-4 animate-in fade-in zoom-in-95 duration-150 text-left">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🚪</span>
+                <div>
+                  <h3 className="font-display font-black text-slate-800 text-sm uppercase tracking-tight">
+                    Vidaay (Exit Checkout)
+                  </h3>
+                  <p className="text-[10px] text-slate-400 font-medium">
+                    Exit Gate: {activeCheckInLog.amenity}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowExitPhotoModal(false)}
+                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {gymTheatreError && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 p-3 rounded-xl text-xs flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <span>{gymTheatreError}</span>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
+                1. Take a Live Verification Selfie
+              </label>
+              
+              <div className="rounded-2xl border border-slate-200 overflow-hidden bg-slate-50 p-2">
+                {handleExitPhotoBase64Capture ? (
+                  <WebcamCapture
+                    onPhotoCaptured={handleExitPhotoBase64Capture}
+                    value={exitPhotoBase64}
+                    guestType="other"
+                  />
+                ) : (
+                  <div className="p-4 text-center">
+                    <p className="text-xs text-rose-500">Camera interface unavailable. Please use file upload below.</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="text-center py-2">
+                <span className="text-[9px] font-bold text-slate-400 uppercase">Or upload a photo manually</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleExitPhotoChange(file);
+                  }}
+                  className="mt-2 block w-full text-[10px] text-slate-500
+                    file:mr-4 file:py-1.5 file:px-3
+                    file:rounded-xl file:border-0
+                    file:text-[9px] file:font-black file:uppercase file:tracking-tight
+                    file:bg-indigo-50 file:text-indigo-700
+                    hover:file:bg-indigo-100 cursor-pointer"
+                />
+              </div>
+
+              {exitPhotoBase64 && (
+                <div className="bg-emerald-50 border border-emerald-100 p-2.5 rounded-xl text-center space-y-1">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-emerald-700 flex items-center justify-center gap-1">
+                    <Check className="w-3.5 h-3.5" /> Selfie Captured & Ready!
+                  </p>
+                  <p className="text-[8px] text-emerald-600">
+                    Image has been compressed & stored locally for checkout validation.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 flex items-center gap-3">
+              <button
+                onClick={() => setShowExitPhotoModal(false)}
+                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-extrabold uppercase py-2.5 px-4 rounded-xl text-[10px] transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmCheckOut}
+                disabled={!exitPhotoBase64}
+                className={`flex-1 font-extrabold uppercase py-2.5 px-4 rounded-xl text-[10px] transition shadow-md ${
+                  exitPhotoBase64
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
+                    : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                }`}
+              >
+                Confirm Exit (Vidaay)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ==================== SCREEN: MOVIE THEATRE SCHEDULE ==================== */}
       {activeSub === 'movies' && (
         <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <button
-              onClick={() => setActiveSub('menu')}
+              onClick={() => handleSetSub('menu')}
               className="flex items-center space-x-1 text-xs font-bold text-slate-500 hover:text-slate-800 cursor-pointer transition select-none"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -905,7 +1056,7 @@ export default function AmenitiesSection({
         <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-6">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <button
-              onClick={() => setActiveSub('menu')}
+              onClick={() => handleSetSub('menu')}
               className="flex items-center space-x-1 text-xs font-bold text-slate-500 hover:text-slate-800 cursor-pointer transition select-none"
             >
               <ArrowLeft className="w-4 h-4" />

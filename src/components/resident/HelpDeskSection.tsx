@@ -189,6 +189,23 @@ export default function HelpDeskSection({
     return true;
   });
 
+  const [selectedNoticeId, setSelectedNoticeId] = useState<string | null>(null);
+  const [selectedFinancialId, setSelectedFinancialId] = useState<string | null>(null);
+
+  // Auto-select first item when notices tab loads
+  useEffect(() => {
+    if (filteredNotices.length > 0 && !selectedNoticeId) {
+      setSelectedNoticeId(filteredNotices[0].id);
+    }
+  }, [filteredNotices, selectedNoticeId]);
+
+  // Auto-select first item when financials list loads
+  useEffect(() => {
+    if (financials.length > 0 && !selectedFinancialId) {
+      setSelectedFinancialId(financials[0].id);
+    }
+  }, [financials, selectedFinancialId]);
+
   return (
     <div className="space-y-4 text-left">
       {/* ==================== VIEW 1: SUB-BLOCKS MENU ==================== */}
@@ -249,7 +266,7 @@ export default function HelpDeskSection({
 
       {/* ==================== SCREEN: SOCIETY NOTICES ==================== */}
       {activeSub === 'notices' && (
-        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-4">
+        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-4 text-left">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <button
               onClick={() => setActiveSub('menu')}
@@ -263,59 +280,106 @@ export default function HelpDeskSection({
             </span>
           </div>
 
-          <div className="space-y-4">
-            {filteredNotices.length === 0 ? (
-              <div className="py-12 flex flex-col items-center justify-center text-slate-400 border border-dashed rounded-2xl bg-slate-50/20">
-                <Bell className="w-8 h-8 text-slate-200 mb-2 animate-bounce" />
-                <p className="text-xs font-semibold">No active notices for Wing {wing} Flat {flatNo}.</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
+          {filteredNotices.length === 0 ? (
+            <div className="py-12 flex flex-col items-center justify-center text-slate-400 border border-dashed rounded-2xl bg-slate-50/20">
+              <Bell className="w-8 h-8 text-slate-200 mb-2 animate-bounce" />
+              <p className="text-xs font-semibold">No active notices for Wing {wing} Flat {flatNo}.</p>
+            </div>
+          ) : (
+            /* Split layout container */
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-5 min-h-[420px]">
+              
+              {/* Left Column: Master List of Compact Notices */}
+              <div className="md:col-span-5 border-r border-slate-100 pr-0 md:pr-4 space-y-2 max-h-[480px] overflow-y-auto">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Notice Directory</p>
                 {filteredNotices.map((notice) => {
+                  const isSelected = selectedNoticeId === notice.id;
+                  const noticeTitle = notice.title || notice.text?.slice(0, 30) || 'Society Announcement';
+                  const noticeCreatedAt = notice.createdAt || notice.timestamp || new Date().toISOString();
+                  const targetType = notice.targetType || notice.target || 'all';
+
+                  return (
+                    <button
+                      key={notice.id}
+                      onClick={() => setSelectedNoticeId(notice.id)}
+                      className={`w-full text-left p-3 rounded-2xl transition border flex items-center space-x-3 cursor-pointer ${
+                        isSelected 
+                          ? 'bg-indigo-50/50 border-indigo-200 ring-1 ring-indigo-50' 
+                          : 'bg-slate-50/40 border-slate-150 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className={`p-2 rounded-xl text-sm shrink-0 ${isSelected ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}>
+                        📢
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <h5 className="font-bold text-xs text-slate-800 truncate leading-snug">
+                          {noticeTitle}
+                        </h5>
+                        <div className="flex items-center justify-between mt-1">
+                          <span className="text-[9px] text-slate-400 font-medium">
+                            {new Date(noticeCreatedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                          </span>
+                          <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase ${
+                            targetType === 'all' 
+                              ? 'bg-slate-100 text-slate-600' 
+                              : targetType === 'wing' 
+                                ? 'bg-amber-50 text-amber-700 border border-amber-100' 
+                                : 'bg-rose-50 text-rose-700 border border-rose-100'
+                          }`}>
+                            {targetType === 'all' ? 'All' : targetType === 'wing' ? `Wing ${notice.targetWing || notice.wing}` : 'Flat'}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Right Column: Detailed Notice Viewer */}
+              <div className="md:col-span-7 bg-slate-50/30 border border-slate-150 rounded-2xl p-5 flex flex-col justify-between max-h-[480px] overflow-y-auto">
+                {(() => {
+                  const notice = filteredNotices.find(n => n.id === selectedNoticeId) || filteredNotices[0];
+                  if (!notice) return null;
+
                   const noticeTitle = notice.title || notice.text?.slice(0, 40) || 'Society Announcement';
                   const noticeContent = notice.content || notice.text || '';
                   const noticeCreatedAt = notice.createdAt || notice.timestamp || new Date().toISOString();
                   const targetType = notice.targetType || notice.target || 'all';
-                  const targetWing = notice.targetWing || notice.wing || '';
-                  const targetFlat = notice.targetFlat || notice.flatNo || '';
 
                   return (
-                    <div
-                      key={notice.id}
-                      className="bg-slate-50/70 border border-slate-200 rounded-2xl p-5 hover:border-slate-300 transition shadow-xs space-y-4"
-                    >
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-200/60 pb-3">
-                        <div className="flex items-center space-x-2">
-                          <span className="p-2 bg-rose-50 border border-rose-100 text-rose-700 rounded-xl shrink-0 text-lg">
-                            🔔
-                          </span>
-                          <div>
-                            <h4 className="font-display font-black text-sm text-slate-800 uppercase tracking-tight">
-                              {noticeTitle}
-                            </h4>
-                            <p className="text-[9px] text-slate-400 font-mono flex items-center mt-0.5">
-                              <Calendar className="w-3.5 h-3.5 mr-1" /> Posted on {new Date(noticeCreatedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                            </p>
+                    <div className="space-y-4 text-left h-full flex flex-col justify-between">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-200/60">
+                          <div className="flex items-center space-x-2">
+                            <span className="p-2 bg-indigo-50 text-indigo-700 rounded-xl shrink-0 text-sm">
+                              🔔
+                            </span>
+                            <div>
+                              <h4 className="font-display font-black text-sm text-slate-800 uppercase tracking-tight">
+                                {noticeTitle}
+                              </h4>
+                              <p className="text-[9px] text-slate-400 font-mono flex items-center mt-0.5">
+                                <Calendar className="w-3.5 h-3.5 mr-1" /> Posted on {new Date(noticeCreatedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                              </p>
+                            </div>
                           </div>
+                          <span className="text-[9px] font-mono font-bold bg-indigo-100 text-indigo-800 border border-indigo-150 px-2.5 py-0.5 rounded-full uppercase">
+                            {targetType === 'all' ? 'All Residents' : targetType === 'wing' ? `Wing ${notice.targetWing || notice.wing} Only` : `Flat ${notice.targetWing || notice.wing}-${notice.targetFlat || notice.flatNo}`}
+                          </span>
                         </div>
 
-                        <span className="text-[9px] font-mono font-bold bg-indigo-100 text-indigo-800 border border-indigo-150 px-2.5 py-0.5 rounded-full uppercase self-start sm:self-center">
-                          {targetType === 'all' ? 'All Residents' : targetType === 'wing' ? `Wing ${targetWing} Only` : `Flat ${targetWing}-${targetFlat}`}
-                        </span>
+                        <div className="text-xs text-slate-600 leading-relaxed bg-white p-4 border border-slate-150 rounded-xl shadow-2xs overflow-y-auto max-h-[200px]">
+                          <p className="whitespace-pre-line">{noticeContent}</p>
+                        </div>
                       </div>
 
-                      <div className="text-xs text-slate-600 leading-relaxed text-left bg-white p-4 border border-slate-150 rounded-xl">
-                        <p className="whitespace-pre-line">{noticeContent}</p>
-                      </div>
-
-                      {/* Dynamic Chunked Attachments rendering */}
+                      {/* Attachments rendering */}
                       {((notice.attachments && notice.attachments.length > 0) || notice.mediaUrl || notice.pdfUrl) && (
-                        <div className="space-y-2 mt-2 text-left">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        <div className="space-y-2 mt-4 pt-3 border-t border-slate-200/50">
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
                             Attachments ({notice.attachments?.length || 1}):
                           </p>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl">
-                            {/* Legacy fallbacks mapped into ChunkedMedia seamlessly */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             {notice.mediaUrl && !(notice.attachments && notice.attachments.some((a: any) => a.url === notice.mediaUrl)) && (
                               <ChunkedMedia
                                 fileId={notice.mediaUrl}
@@ -330,8 +394,6 @@ export default function HelpDeskSection({
                                 fallbackName={notice.fileName || 'Document_Notice'}
                               />
                             )}
-
-                            {/* Multiple chunked attachments */}
                             {notice.attachments && notice.attachments.map((att: any, idx: number) => (
                               <ChunkedMedia
                                 key={idx}
@@ -345,10 +407,11 @@ export default function HelpDeskSection({
                       )}
                     </div>
                   );
-                })}
+                })()}
               </div>
-            )}
-          </div>
+
+            </div>
+          )}
         </div>
       )}
 
@@ -570,7 +633,7 @@ export default function HelpDeskSection({
 
       {/* ==================== SCREEN: FINANCIAL STATEMENT LEDGER ==================== */}
       {activeSub === 'financials' && (
-        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-4">
+        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-4 text-left">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <button
               onClick={() => setActiveSub('menu')}
@@ -597,57 +660,137 @@ export default function HelpDeskSection({
                 <p className="text-xs">No ledger statements uploaded by secretary yet.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[500px] overflow-y-auto pr-1">
-                {financials.map((report) => (
-                  <div key={report.id} className="border border-slate-200 p-4 rounded-xl bg-slate-50/50 flex flex-col justify-between hover:border-slate-300 transition shadow-sm text-left">
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[9px] font-mono font-bold bg-indigo-50 border border-indigo-150 text-indigo-700 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                          {report.reportType || report.type || 'Balance Sheet'}
-                        </span>
-                        <span className="text-xs font-black text-indigo-700 font-mono">
-                          ₹ {report.totalExpense?.toLocaleString('en-IN') || 0}
-                        </span>
-                      </div>
-                      <h5 className="font-bold text-xs text-slate-800 uppercase leading-snug">{report.title}</h5>
-                      <p className="text-[10px] text-slate-500 font-mono">
-                        Date: {new Date(report.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                      </p>
-                      {report.description && (
-                        <p className="text-[11px] text-slate-600 bg-white p-2.5 border border-slate-150 rounded leading-relaxed whitespace-pre-line">
-                          {report.description}
-                        </p>
-                      )}
-                    </div>
+              /* Split layout container */
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-5 min-h-[420px]">
+                
+                {/* Left Column: Master List of Compact Financial Statements */}
+                <div className="md:col-span-5 border-r border-slate-100 pr-0 md:pr-4 space-y-2 max-h-[480px] overflow-y-auto">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Statement History</p>
+                  {financials.map((report) => {
+                    const isSelected = selectedFinancialId === report.id;
+                    const reportTitle = report.title || 'Ledger Report';
+                    const reportDate = report.createdAt || new Date().toISOString();
+                    const reportType = report.reportType || report.type || 'Balance Sheet';
+                    const amount = report.totalExpense || 0;
 
-                    {/* Dynamic Chunked Attachments rendering for financials */}
-                    {((report.attachments && report.attachments.length > 0) || report.mediaUrl) && (
-                      <div className="border-t border-slate-200/60 pt-3 mt-3 space-y-1.5">
-                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
-                          Connected Attachments ({report.attachments?.length || 1}):
-                        </p>
-                        <div className="grid grid-cols-1 gap-2">
-                          {report.mediaUrl && !(report.attachments && report.attachments.some((a: any) => a.url === report.mediaUrl)) && (
-                            <ChunkedMedia
-                              fileId={report.mediaUrl}
-                              type={report.fileType || 'application/pdf'}
-                              fallbackName={report.mediaName || 'Statement_Report'}
-                            />
-                          )}
-
-                          {report.attachments && report.attachments.map((att: any, idx: number) => (
-                            <ChunkedMedia
-                              key={idx}
-                              fileId={att.url}
-                              type={att.type}
-                              fallbackName={att.name || 'Statement_File'}
-                            />
-                          ))}
+                    return (
+                      <button
+                        key={report.id}
+                        onClick={() => setSelectedFinancialId(report.id)}
+                        className={`w-full text-left p-3 rounded-2xl transition border flex items-center justify-between cursor-pointer ${
+                          isSelected 
+                            ? 'bg-indigo-50/50 border-indigo-200 ring-1 ring-indigo-50' 
+                            : 'bg-slate-50/40 border-slate-150 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-3 min-w-0 flex-1 pr-2">
+                          <span className={`p-2 rounded-xl text-sm shrink-0 ${isSelected ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}>
+                            💰
+                          </span>
+                          <div className="min-w-0">
+                            <h5 className="font-bold text-xs text-slate-800 truncate leading-snug">
+                              {reportTitle}
+                            </h5>
+                            <div className="flex items-center space-x-1.5 mt-1">
+                              <span className="text-[8px] font-semibold text-slate-400 font-mono">
+                                {new Date(reportDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                              </span>
+                              <span className="text-[8px] font-bold px-1.5 py-0.2 bg-slate-100 text-slate-500 rounded-full uppercase">
+                                {reportType}
+                              </span>
+                            </div>
+                          </div>
                         </div>
+                        <span className="text-xs font-black text-indigo-700 font-mono shrink-0">
+                          ₹{amount.toLocaleString('en-IN')}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Right Column: Detailed Statement Audit Receipt */}
+                <div className="md:col-span-7 bg-slate-50/30 border border-slate-150 rounded-2xl p-5 flex flex-col justify-between max-h-[480px] overflow-y-auto">
+                  {(() => {
+                    const report = financials.find(r => r.id === selectedFinancialId) || financials[0];
+                    if (!report) return null;
+
+                    const reportTitle = report.title || 'Ledger Report';
+                    const reportDate = report.createdAt || new Date().toISOString();
+                    const reportType = report.reportType || report.type || 'Balance Sheet';
+                    const amount = report.totalExpense || 0;
+
+                    return (
+                      <div className="space-y-4 text-left h-full flex flex-col justify-between">
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between pb-3 border-b border-slate-200/60 flex-wrap gap-2">
+                            <div className="flex items-center space-x-2">
+                              <span className="p-2 bg-indigo-50 text-indigo-700 rounded-xl shrink-0 text-sm">
+                                📑
+                              </span>
+                              <div>
+                                <h4 className="font-display font-black text-sm text-slate-800 uppercase tracking-tight">
+                                  {reportTitle}
+                                </h4>
+                                <p className="text-[9px] text-slate-400 font-mono flex items-center mt-0.5">
+                                  <Calendar className="w-3.5 h-3.5 mr-1" /> Audited on {new Date(reportDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                </p>
+                              </div>
+                            </div>
+                            <span className="text-[9px] font-mono font-bold bg-indigo-100 text-indigo-800 border border-indigo-150 px-2.5 py-0.5 rounded-full uppercase">
+                              {reportType}
+                            </span>
+                          </div>
+
+                          {/* Beautiful Receipt Outlay Board */}
+                          <div className="bg-white p-4 rounded-xl border border-slate-150 shadow-2xs space-y-3">
+                            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Statement Outlay:</span>
+                              <span className="text-sm font-black text-emerald-600 font-mono">
+                                ₹ {amount.toLocaleString('en-IN')}
+                              </span>
+                            </div>
+                            {report.description && (
+                              <div className="space-y-1">
+                                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Description & Notes:</span>
+                                <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line max-h-[180px] overflow-y-auto">
+                                  {report.description}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Attachments rendering */}
+                        {((report.attachments && report.attachments.length > 0) || report.mediaUrl) && (
+                          <div className="space-y-2 mt-4 pt-3 border-t border-slate-200/50">
+                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                              Statements & Receipts ({report.attachments?.length || 1}):
+                            </p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {report.mediaUrl && !(report.attachments && report.attachments.some((a: any) => a.url === report.mediaUrl)) && (
+                                <ChunkedMedia
+                                  fileId={report.mediaUrl}
+                                  type={report.fileType || 'application/pdf'}
+                                  fallbackName={report.mediaName || 'Statement_Report'}
+                                />
+                              )}
+                              {report.attachments && report.attachments.map((att: any, idx: number) => (
+                                <ChunkedMedia
+                                  key={idx}
+                                  fileId={att.url}
+                                  type={att.type}
+                                  fallbackName={att.name || 'Statement_File'}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                ))}
+                    );
+                  })()}
+                </div>
+
               </div>
             )}
           </div>

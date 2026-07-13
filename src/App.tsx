@@ -78,6 +78,60 @@ export default function App() {
     }
   }, []);
 
+  // Foreground synthesized chime alert for push notifications
+  useEffect(() => {
+    const playChime = () => {
+      try {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioContextClass) return;
+        const ctx = new AudioContextClass();
+        
+        // Pleasant double bell-like chime
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+        gain1.gain.setValueAtTime(0.12, ctx.currentTime);
+        gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+        osc1.connect(gain1);
+        gain1.connect(ctx.destination);
+        osc1.start();
+        osc1.stop(ctx.currentTime + 0.5);
+        
+        setTimeout(() => {
+          try {
+            const osc2 = ctx.createOscillator();
+            const gain2 = ctx.createGain();
+            osc2.type = 'sine';
+            osc2.frequency.setValueAtTime(880, ctx.currentTime); // A5
+            gain2.gain.setValueAtTime(0.08, ctx.currentTime);
+            gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+            osc2.connect(gain2);
+            gain2.connect(ctx.destination);
+            osc2.start();
+            osc2.stop(ctx.currentTime + 0.6);
+          } catch (e) {
+            console.warn(e);
+          }
+        }, 110);
+      } catch (err) {
+        console.warn('Could not play notification chime:', err);
+      }
+    };
+
+    const handleSWMessage = (event: MessageEvent) => {
+      if (event.data && (event.data.type === 'FCM_NOTIFICATION_RECEIVED' || event.data.type === 'VISITOR_ACTION')) {
+        console.log('[App] Received push notification signal from SW:', event.data);
+        playChime();
+      }
+    };
+
+    navigator.serviceWorker?.addEventListener('message', handleSWMessage);
+    return () => {
+      navigator.serviceWorker?.removeEventListener('message', handleSWMessage);
+    };
+  }, []);
+
   // Set default tabs based on authenticated roles & URL paths
   useEffect(() => {
     if (session) {

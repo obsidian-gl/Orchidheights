@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Bell, ShieldAlert, Check, X, Users, Car, Phone, Lock, Eye, EyeOff, ClipboardList, AlertCircle, Trash2, Plus, Clock, RefreshCw, Megaphone, FileText, Download, Search, Wrench, CheckCircle, Upload, Calendar, Home, User, Dumbbell, Film, Sparkles, BookOpen, MapPin, CheckSquare, PlusCircle, ChevronRight, ArrowLeft } from 'lucide-react';
 import { FlatOwner, Visitor, Vehicle, UserSession, Announcement, AmenityBooking, GymTheatreLog, DailyHelper, AbsenceLog, EssentialContact } from '../types';
@@ -356,12 +356,14 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
     } else if (activeSubSection === 'notifications') {
       expectedPath = '/notifications';
     } else if (activeSubSection === 'amenity') {
-      if (currentPath === '/amenities/gym-theatre') {
-        expectedPath = '/amenities/gym-theatre';
-      } else if (currentPath === '/amenities/gym-schedule') {
-        expectedPath = '/amenities/gym-schedule';
+      if (currentPath === '/amenity/gym-theatre' || currentPath === '/amenities/gym-theatre') {
+        expectedPath = currentPath;
+      } else if (currentPath === '/amenity/movies' || currentPath === '/amenities/gym-schedule' || currentPath === '/amenity/gym-schedule') {
+        expectedPath = currentPath;
+      } else if (currentPath === '/amenity/bookings') {
+        expectedPath = '/amenity/bookings';
       } else {
-        expectedPath = '/amenities';
+        expectedPath = currentPath.startsWith('/amenities') ? '/amenities' : '/amenity';
       }
     } else {
       expectedPath = '/'; // Default landing
@@ -396,7 +398,7 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
         if (activeSubSection !== 'complaints') setActiveSubSection('complaints');
       } else if (path === '/notifications') {
         if (activeSubSection !== 'notifications') setActiveSubSection('notifications');
-      } else if (path.startsWith('/amenities')) {
+      } else if (path.startsWith('/amenity') || path.startsWith('/amenities')) {
         if (activeSubSection !== 'amenity') setActiveSubSection('amenity');
       } else if (path === '/' || path === '') {
         if (activeSubSection !== null) setActiveSubSection(null);
@@ -414,6 +416,59 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   const [absenceLogs, setAbsenceLogs] = useState<AbsenceLog[]>([]);
   const [essentialContacts, setEssentialContacts] = useState<EssentialContact[]>([]);
   const [societyNotifications, setSocietyNotifications] = useState<any[]>([]);
+  const [indexedDbNotifications, setIndexedDbNotifications] = useState<any[]>([]);
+
+  // Load notifications from local IndexedDB for complete 2-week persistent push notifications history
+  useEffect(() => {
+    const loadIndexedDBNotifs = () => {
+      try {
+        const req = indexedDB.open('orchid_notifications_db', 1);
+        req.onsuccess = (e: any) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains('notifications')) return;
+          const tx = db.transaction('notifications', 'readonly');
+          const store = tx.objectStore('notifications');
+          const getReq = store.getAll();
+          getReq.onsuccess = () => {
+            const list = getReq.result || [];
+            // Sort by timestamp desc
+            list.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+            setIndexedDbNotifications(list);
+          };
+        };
+      } catch (err) {
+        console.warn('Error reading notifications from IndexedDB:', err);
+      }
+    };
+
+    loadIndexedDBNotifs();
+
+    // Listen to push notification signals from SW to refresh the list instantly
+    const handleSWNotification = () => {
+      loadIndexedDBNotifs();
+    };
+    navigator.serviceWorker?.addEventListener('message', handleSWNotification);
+    return () => {
+      navigator.serviceWorker?.removeEventListener('message', handleSWNotification);
+    };
+  }, []);
+
+  // Merge Firestore-live notifications with local IndexedDB background push-notifications
+  const combinedNotifications = useMemo(() => {
+    const combined = [...societyNotifications];
+    indexedDbNotifications.forEach((idbNotif) => {
+      if (!combined.some((n) => n.id === idbNotif.id)) {
+        combined.push(idbNotif);
+      }
+    });
+    // Sort chronologically (newest first)
+    combined.sort((a, b) => {
+      const timeA = a.timestamp || a.createdAt ? new Date(a.timestamp || a.createdAt).getTime() : 0;
+      const timeB = b.timestamp || b.createdAt ? new Date(b.timestamp || b.createdAt).getTime() : 0;
+      return timeB - timeA;
+    });
+    return combined;
+  }, [societyNotifications, indexedDbNotifications]);
   const [dismissedNotifIds, setDismissedNotifIds] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('orchid_dismissed_notifs');
@@ -848,6 +903,26 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
         console.error('Exit photo compression failed:', err);
         setGymTheatreError('Failed to process image compression.');
       });
+  };
+
+  const handleExitPhotoBase64Capture = (base64: string) => {
+    setExitPhotoBase64(base64);
+    setExitPhotoTimeError(false);
+    setGymTheatreError('');
+    try {
+      const arr = base64.split(',');
+      const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+      const bstr = atob(arr[1]);
+      let n = bstr.length;
+      const u8arr = new Uint8Array(n);
+      while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+      }
+      const file = new File([u8arr], `exit_${activeCheckInLog?.id || 'selfie'}.jpg`, { type: mime });
+      setExitPhotoFile(file);
+    } catch (e) {
+      console.error('Failed to parse base64 to file', e);
+    }
   };
 
   // Confirm Check Out with Image upload
@@ -1368,7 +1443,7 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   const firstName = fullName.split(' ')[0] || 'Rahul';
   const nameGu = myOwnerData?.nameGu || 'રાહુલ જશવંતરાય પોપટ';
   const flatStr = `Flat ${wing}-${flatNo}`;
-  const activeSocietyNotifs = societyNotifications.filter((n) => !dismissedNotifIds.includes(n.id));
+  const activeSocietyNotifs = combinedNotifications.filter((n) => !dismissedNotifIds.includes(n.id));
 
   return (
     <div className="space-y-6 text-slate-800 pb-24 text-left">
@@ -1467,9 +1542,9 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                   title="Open Notifications Panel"
                 >
                   <Bell className="w-4.5 h-4.5" />
-                  {(societyNotifications.filter((n) => !dismissedNotifIds.includes(n.id)).length + activeSosAlerts.length) > 0 && (
+                  {(combinedNotifications.filter((n) => !dismissedNotifIds.includes(n.id)).length + activeSosAlerts.length) > 0 && (
                     <span className="absolute -top-1 -right-1 w-4.5 h-4.5 bg-[#7C3AED] text-white text-[8px] font-black rounded-full flex items-center justify-center shadow animate-bounce">
-                      {societyNotifications.filter((n) => !dismissedNotifIds.includes(n.id)).length + activeSosAlerts.length}
+                      {combinedNotifications.filter((n) => !dismissedNotifIds.includes(n.id)).length + activeSosAlerts.length}
                     </span>
                   )}
                 </button>
@@ -1777,7 +1852,7 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                 <div className="flex items-center justify-between w-full">
                   <div className="w-11 h-11 rounded-full bg-[#EF4444] text-white flex items-center justify-center shrink-0 shadow-sm relative">
                     <Bell className="w-5 h-5" />
-                    {societyNotifications.filter((n) => !dismissedNotifIds.includes(n.id)).length > 0 && (
+                    {combinedNotifications.filter((n) => !dismissedNotifIds.includes(n.id)).length > 0 && (
                       <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-rose-600 rounded-full animate-ping" />
                     )}
                   </div>
@@ -1860,6 +1935,7 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                 handleVoteAmenityBooking={handleVoteAmenityBooking}
                 handleCheckInGymTheatre={handleCheckInGymTheatre}
                 handleCheckOutGymTheatreFlow={handleCheckOutGymTheatreFlow}
+                handleExitPhotoBase64Capture={handleExitPhotoBase64Capture}
                 showExitPhotoModal={showExitPhotoModal}
                 setShowExitPhotoModal={setShowExitPhotoModal}
                 exitPhotoBase64={exitPhotoBase64}
@@ -1977,7 +2053,7 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                   const twoWeeksAgo = new Date();
                   twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
 
-                  const filteredNotifs = societyNotifications.filter((n) => {
+                  const filteredNotifs = combinedNotifications.filter((n) => {
                     const notifTime = n.timestamp ? new Date(n.timestamp).getTime() : Date.now();
                     return notifTime >= twoWeeksAgo.getTime();
                   });

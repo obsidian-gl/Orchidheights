@@ -19,6 +19,84 @@ firebase.initializeApp({
 const messaging = firebase.messaging();
 const db = firebase.app().firestore("ai-studio-orchidheightsgat-9723728d-dfbd-4989-888d-4a04d2bdfd45");
 
+// IndexedDB configuration & helper functions for 2-week persistence
+const DB_NAME = 'orchid_notifications_db';
+const STORE_NAME = 'notifications';
+const DB_VERSION = 1;
+
+function getDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      }
+    };
+    request.onsuccess = (event) => {
+      resolve(event.target.result);
+    };
+    request.onerror = (event) => {
+      reject(event.target.error);
+    };
+  });
+}
+
+function storeNotificationInDB(notification) {
+  return getDB().then((db) => {
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, 'readwrite');
+      const store = transaction.objectStore(STORE_NAME);
+      
+      const record = {
+        id: notification.id || 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9),
+        title: notification.title || 'Notification',
+        message: notification.message || notification.body || '',
+        type: notification.type || 'fcm_alert',
+        timestamp: notification.timestamp || new Date().toISOString(),
+        metadata: notification.metadata || {},
+        isRead: false
+      };
+      
+      store.put(record);
+      
+      transaction.oncomplete = () => {
+        console.log('[SW] Notification stored in IndexedDB successfully:', record.id);
+        cleanOldNotifications(db);
+        resolve();
+      };
+      
+      transaction.onerror = (event) => {
+        reject(event.target.error);
+      };
+    });
+  });
+}
+
+function cleanOldNotifications(db) {
+  try {
+    const transaction = db.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    const now = Date.now();
+    const twoWeeksMs = 14 * 24 * 60 * 60 * 1000;
+    
+    store.openCursor().onsuccess = (event) => {
+      const cursor = event.target.result;
+      if (cursor) {
+        const record = cursor.value;
+        const recordTime = new Date(record.timestamp).getTime();
+        if (now - recordTime > twoWeeksMs) {
+          store.delete(cursor.primaryKey);
+          console.log('[SW] Cleaned up notification older than 2 weeks:', cursor.primaryKey);
+        }
+        cursor.continue();
+      }
+    };
+  } catch (err) {
+    console.warn('[SW] Error cleaning old notifications:', err);
+  }
+}
+
 let activeUnsubscribe = null;
 let activeSocietyUnsubscribe = null;
 const notifiedIds = new Set();
@@ -86,10 +164,36 @@ function setupVisitorListener(wing, flatNo) {
             const body = `Guest Type: ${visitor.guestType}\nWing-Flat: ${visitor.wing}-${visitor.flatNo}\nReason: ${visitor.reason}`;
             const icon = visitor.photoUrl || 'https://i.ibb.co/zT5tpcdY/1000296229-1.png';
 
+            const notifObj = {
+              id: docId,
+              title,
+              message: body,
+              type: 'visitor',
+              timestamp: visitor.requestTime || new Date().toISOString(),
+              metadata: visitor
+            };
+
+            // Store in local IndexedDB
+            storeNotificationInDB(notifObj);
+
+            // Broadcast message to active tabs
+            clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+              clientList.forEach((client) => {
+                if ('postMessage' in client) {
+                  client.postMessage({
+                    type: 'FCM_NOTIFICATION_RECEIVED',
+                    notification: notifObj
+                  });
+                }
+              });
+            });
+
             self.registration.showNotification(title, {
               body,
               icon,
               badge: 'https://i.ibb.co/zT5tpcdY/1000296229-1.png',
+              sound: '/assets/alert.mp3',
+              vibrate: [200, 100, 200],
               tag: docId,
               requireInteraction: true,
               data: { 
@@ -151,10 +255,36 @@ function setupSocietyNotificationListener(wing, flatNo) {
             const body = notif.message || 'A new society alert has been broadcasted.';
             const icon = 'https://i.ibb.co/zT5tpcdY/1000296229-1.png';
 
+            const notifObj = {
+              id: docId,
+              title,
+              message: body,
+              type: notif.type || 'society_alert',
+              timestamp: timestampVal,
+              metadata: notif.metadata || {}
+            };
+
+            // Store in local IndexedDB
+            storeNotificationInDB(notifObj);
+
+            // Broadcast message to active tabs
+            clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+              clientList.forEach((client) => {
+                if ('postMessage' in client) {
+                  client.postMessage({
+                    type: 'FCM_NOTIFICATION_RECEIVED',
+                    notification: notifObj
+                  });
+                }
+              });
+            });
+
             self.registration.showNotification(title, {
               body,
               icon,
               badge: 'https://i.ibb.co/zT5tpcdY/1000296229-1.png',
+              sound: '/assets/alert.mp3',
+              vibrate: [200, 100, 200],
               tag: docId,
               requireInteraction: true,
               data: { 
@@ -178,14 +308,41 @@ function setupSocietyNotificationListener(wing, flatNo) {
 // FCM standard background messages support
 messaging.onBackgroundMessage((payload) => {
   console.log('[SW] FCM Background notification received:', payload);
-  const title = payload.notification?.title || '🚪 New Visitor Request';
-  const body = payload.notification?.body || 'A visitor is waiting at the gate for approval!';
-  const icon = payload.notification?.image || 'https://i.ibb.co/zT5tpcdY/1000296229-1.png';
+  const title = payload.notification?.title || payload.data?.title || '🚪 New Visitor Request';
+  const body = payload.notification?.body || payload.data?.message || payload.data?.body || 'A visitor is waiting at the gate for approval!';
+  const icon = payload.notification?.image || payload.data?.photoUrl || 'https://i.ibb.co/zT5tpcdY/1000296229-1.png';
   
-  self.registration.showNotification(title, {
+  const id = payload.data?.id || 'fcm_' + Date.now();
+  const notifObj = {
+    id,
+    title,
+    message: body,
+    type: payload.data?.type || 'fcm_alert',
+    timestamp: payload.data?.timestamp || new Date().toISOString(),
+    metadata: payload.data || {}
+  };
+
+  // Store in IndexedDB
+  storeNotificationInDB(notifObj);
+
+  // Broadcast to open clients
+  clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+    clientList.forEach((client) => {
+      if ('postMessage' in client) {
+        client.postMessage({
+          type: 'FCM_NOTIFICATION_RECEIVED',
+          notification: notifObj
+        });
+      }
+    });
+  });
+
+  return self.registration.showNotification(title, {
     body,
     icon,
     badge: 'https://i.ibb.co/zT5tpcdY/1000296229-1.png',
+    sound: '/assets/alert.mp3',
+    vibrate: [200, 100, 200],
     data: payload.data || {},
     requireInteraction: true,
     actions: [
