@@ -17,7 +17,7 @@ firebase.initializeApp({
 });
 
 const messaging = firebase.messaging();
-const db = firebase.firestore();
+const db = firebase.app().firestore("ai-studio-orchidheightsgat-9723728d-dfbd-4989-888d-4a04d2bdfd45");
 
 let activeUnsubscribe = null;
 let activeSocietyUnsubscribe = null;

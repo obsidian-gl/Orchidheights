@@ -364,7 +364,7 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
         expectedPath = '/amenities';
       }
     } else {
-      expectedPath = '/directory'; // Default landing
+      expectedPath = '/'; // Default landing
     }
 
     if (currentPath !== expectedPath && !currentPath.startsWith(expectedPath)) {
