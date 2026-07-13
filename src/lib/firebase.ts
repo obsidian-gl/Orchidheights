@@ -578,9 +578,9 @@ export function subscribeToVisitorNotifications(
   onUpdate: (visitors: Visitor[]) => void,
   onError?: (error: Error) => void
 ) {
-  const notificationsCol = collection(db, 'notifications');
+  const visitorsCol = collection(db, 'visitors');
   const q = query(
-    notificationsCol,
+    visitorsCol,
     where('wing', '==', wing.toUpperCase()),
     where('flatNo', '==', Number(flatNo)),
     where('status', '==', 'pending')

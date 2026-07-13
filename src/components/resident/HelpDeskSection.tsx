@@ -245,6 +245,44 @@ export default function HelpDeskSection({
     }
   }, [financials, selectedFinancialId]);
 
+  // Support Deep-linking query params (e.g. ?noticeId=123, ?complaintId=456, ?ledgerId=789)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const noticeId = params.get('noticeId');
+    const complaintId = params.get('complaintId');
+    const ledgerId = params.get('ledgerId');
+
+    if (noticeId && filteredNotices.length > 0) {
+      const found = filteredNotices.find(n => n.id === noticeId);
+      if (found) {
+        setActiveSub('notices');
+        setSelectedNoticeId(noticeId);
+        setMobileExpandedNoticeId(noticeId);
+      }
+    }
+    if (ledgerId && financials.length > 0) {
+      const found = financials.find(f => f.id === ledgerId);
+      if (found) {
+        setActiveSub('financials');
+        setSelectedFinancialId(ledgerId);
+        setMobileExpandedFinancialId(ledgerId);
+      }
+    }
+    if (complaintId && complaints.length > 0) {
+      setActiveSub('complaints');
+      setTimeout(() => {
+        const element = document.getElementById(`complaint-${complaintId}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.classList.add('ring-2', 'ring-indigo-500', 'ring-offset-2', 'animate-pulse');
+          setTimeout(() => {
+            element.classList.remove('ring-2', 'ring-indigo-500', 'ring-offset-2', 'animate-pulse');
+          }, 4000);
+        }
+      }, 500);
+    }
+  }, [filteredNotices.length, financials.length, complaints.length]);
+
   return (
     <div className="space-y-4 text-left">
       {/* ==================== VIEW 1: SUB-BLOCKS MENU ==================== */}
@@ -339,7 +377,7 @@ export default function HelpDeskSection({
                   const targetType = notice.targetType || notice.target || 'all';
 
                   return (
-                    <div key={notice.id} className="space-y-1">
+                    <div id={`notice-${notice.id}`} key={notice.id} className="space-y-1">
                       <button
                         onClick={() => {
                           setSelectedNoticeId(notice.id);
@@ -649,7 +687,7 @@ export default function HelpDeskSection({
                   {complaints
                     .filter((c) => c.wing === wing && c.flatNo === flatNo)
                     .map((item) => (
-                      <div key={item.id} className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 hover:bg-slate-50 transition space-y-3">
+                      <div id={`complaint-${item.id}`} key={item.id} className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 hover:bg-slate-50 transition space-y-3">
                         <div className="flex justify-between items-start">
                           <div>
                             <span className="font-mono bg-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded text-[9px] uppercase">
@@ -756,7 +794,7 @@ export default function HelpDeskSection({
                     const amount = report.totalExpense || 0;
 
                     return (
-                      <div key={report.id} className="space-y-1">
+                      <div id={`ledger-${report.id}`} key={report.id} className="space-y-1">
                         <button
                           onClick={() => {
                             setSelectedFinancialId(report.id);

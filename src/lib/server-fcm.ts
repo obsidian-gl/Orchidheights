@@ -38,7 +38,7 @@ export async function sendFCMToFlat(wing: string, flatNo: number, visitor: any) 
     const fcmTokensCol = collection(db, 'fcm_tokens');
     const q = query(
       fcmTokensCol,
-      where('wing', '==', wing),
+      where('wing', '==', wing.toUpperCase()),
       where('flatNo', '==', Number(flatNo))
     );
     
@@ -194,7 +194,7 @@ export function startServerNotificationListener() {
           // Verify that request is recent to prevent redundant triggers on system boot
           const requestTime = new Date(visitor.requestTime).getTime();
           const now = Date.now();
-          if (now - requestTime < 5 * 60 * 1000) { // last 5 minutes
+          if (Math.abs(now - requestTime) < 60 * 60 * 1000) { // last 1 hour
             console.log(`[Server FCM] Reactive push triggered for visitor: ${visitor.fullName} (Flat ${visitor.wing}-${visitor.flatNo})`);
             await sendFCMToFlat(visitor.wing, visitor.flatNo, visitor);
           }
@@ -221,7 +221,7 @@ export function startServerNotificationListener() {
         if (notif.type !== 'visitor') {
           const timestamp = new Date(notif.timestamp).getTime();
           const now = Date.now();
-          if (now - timestamp < 2 * 60 * 1000) { // within 2 minutes of being created
+          if (Math.abs(now - timestamp) < 60 * 60 * 1000) { // within 1 hour of being created
             console.log(`[Server FCM] Reactive push triggered for society alert: ${notif.title}`);
             await broadcastFCMNotice(notif);
           }
