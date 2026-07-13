@@ -136,10 +136,12 @@ function syncBackgroundListeners() {
 }
 
 // Subscribe to real-time visitors for the specific flat in the background
+let isInitialVisitor = true;
 function setupVisitorListener(wing, flatNo) {
   if (activeUnsubscribe) {
     activeUnsubscribe();
   }
+  isInitialVisitor = true;
 
   console.log(`[SW] Starting background visitor snapshot listener for flat ${wing}-${flatNo}`);
 
@@ -151,13 +153,13 @@ function setupVisitorListener(wing, flatNo) {
       snapshot.docChanges().forEach(change => {
         if (change.type === 'added') {
           const docId = change.doc.id;
+          if (isInitialVisitor) {
+            notifiedIds.add(docId);
+            return;
+          }
           const visitor = change.doc.data();
 
-          // Ensure we don't alert for old records on initial snapshot load
-          const requestTimeMs = visitor.requestTime ? new Date(visitor.requestTime).getTime() : Date.now();
-          const isFresh = (Date.now() - requestTimeMs) < 60000;
-
-          if (!notifiedIds.has(docId) && isFresh) {
+          if (!notifiedIds.has(docId)) {
             notifiedIds.add(docId);
             
             const title = `🚪 New Visitor: ${visitor.fullName}`;
@@ -206,22 +208,23 @@ function setupVisitorListener(wing, flatNo) {
                 { action: 'reject', title: '❌ Reject' }
               ]
             });
-          } else {
-            // Keep track of pre-existing documents loaded on snapshot initiation
-            notifiedIds.add(docId);
           }
         }
       });
+      isInitialVisitor = false;
     }, err => {
       console.error('[SW] Firestore background snapshot listener error:', err);
     });
 }
 
+
 // Subscribe to real-time society-wide notifications in the background
+let isInitialSociety = true;
 function setupSocietyNotificationListener(wing, flatNo) {
   if (activeSocietyUnsubscribe) {
     activeSocietyUnsubscribe();
   }
+  isInitialSociety = true;
 
   console.log(`[SW] Starting background society notifications listener for flat ${wing}-${flatNo}`);
 
@@ -230,14 +233,13 @@ function setupSocietyNotificationListener(wing, flatNo) {
       snapshot.docChanges().forEach(change => {
         if (change.type === 'added') {
           const docId = change.doc.id;
+          if (isInitialSociety) {
+            notifiedSocietyIds.add(docId);
+            return;
+          }
           const notif = change.doc.data();
 
-          // Ensure we don't alert for old records on initial snapshot load
-          const timestampVal = notif.timestamp || notif.createdAt || new Date().toISOString();
-          const notifTime = new Date(timestampVal).getTime();
-          const isFresh = (Date.now() - notifTime) < 60000;
-
-          if (!notifiedSocietyIds.has(docId) && isFresh) {
+          if (!notifiedSocietyIds.has(docId)) {
             notifiedSocietyIds.add(docId);
 
             // Filter visitor notifications that do not belong to this flat
@@ -254,6 +256,7 @@ function setupSocietyNotificationListener(wing, flatNo) {
             const title = notif.title || '🔔 Orchid Heights Alert';
             const body = notif.message || 'A new society alert has been broadcasted.';
             const icon = 'https://i.ibb.co/zT5tpcdY/1000296229-1.png';
+            const timestampVal = notif.timestamp || notif.createdAt || new Date().toISOString();
 
             const notifObj = {
               id: docId,
@@ -295,11 +298,10 @@ function setupSocietyNotificationListener(wing, flatNo) {
                 flatNo 
               }
             });
-          } else {
-            notifiedSocietyIds.add(docId);
           }
         }
       });
+      isInitialSociety = false;
     }, err => {
       console.error('[SW] Firestore background society notifications listener error:', err);
     });

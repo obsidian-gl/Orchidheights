@@ -643,7 +643,19 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   useEffect(() => {
     if (activeSubSection) {
       let path = `/${activeSubSection}`;
-      if (activeSubSection === 'helpdesk') path = '/complaintbox';
+      if (activeSubSection === 'helpdesk') {
+        if (window.location.pathname.startsWith('/helpdesk')) {
+          path = window.location.pathname;
+        } else {
+          path = '/helpdesk';
+        }
+      } else if (activeSubSection === 'amenity') {
+        if (window.location.pathname.startsWith('/amenity')) {
+          path = window.location.pathname;
+        } else {
+          path = '/amenity';
+        }
+      }
       if (window.location.pathname !== path) {
         window.history.pushState({ sub: activeSubSection }, '', path);
       }
@@ -667,13 +679,13 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
       } else if (path === '/directory') {
         setLastVisitedSubSection('directory');
         setActiveSubSection('directory');
-      } else if (path === '/amenity' || path === '/amenities') {
+      } else if (path.startsWith('/amenity') || path.startsWith('/amenities')) {
         setLastVisitedSubSection('amenity');
         setActiveSubSection('amenity');
       } else if (path === '/services') {
         setLastVisitedSubSection('services');
         setActiveSubSection('services');
-      } else if (path === '/helpdesk') {
+      } else if (path.startsWith('/helpdesk')) {
         setLastVisitedSubSection('helpdesk');
         setActiveSubSection('helpdesk');
       } else if (path === '/notifications' || path === '/alerts') {
@@ -881,16 +893,8 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
       return;
     }
 
-    // Verify 15-minute maximum age of the photo to ensure it is live/recent
+    // Store selected photo file for upload
     setExitPhotoFile(file);
-    const fileAgeMs = Date.now() - file.lastModified;
-    const fileAgeMinutes = fileAgeMs / 60000;
-    if (fileAgeMinutes > 15) {
-      setGymTheatreError('Security Audit: The exit photo must be a live image captured within the last 15 minutes. Please snap a new photo.');
-      setExitPhotoTimeError(true);
-      setExitPhotoBase64('');
-      return;
-    }
 
     // Compress the live selfie image to keep database payload ultra-lightweight and prevent size limit crashes
     compressImage(file, 500, 500, 0.5)

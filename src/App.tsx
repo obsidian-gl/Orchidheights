@@ -138,15 +138,10 @@ export default function App() {
       if (session.role === 'security') {
         setActiveTab('security');
       } else if (session.role === 'owner' || session.role === 'admin') {
-        const path = window.location.pathname;
-        if (path === '/directory') {
-          setActiveTab('directory');
-        } else {
-          setActiveTab('resident');
-        }
+        setActiveTab('resident');
       }
     } else {
-      setActiveTab('directory');
+      setActiveTab('resident');
     }
   }, [session]);
 
@@ -263,7 +258,7 @@ export default function App() {
   const handleLogout = () => {
     setSession(null);
     localStorage.removeItem('orchid_gate_session');
-    setActiveTab('directory');
+    setActiveTab('resident');
   };
 
   return (
@@ -334,13 +329,6 @@ export default function App() {
                         session={session}
                         owners={owners}
                         onRefreshOwners={loadOwners}
-                      />
-                    )}
-
-                    {activeTab === 'directory' && (
-                      <Directory
-                        owners={owners}
-                        session={session}
                       />
                     )}
                   </motion.div>
