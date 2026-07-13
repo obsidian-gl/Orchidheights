@@ -223,67 +223,6 @@ export default function App() {
     }
   }, [session]);
 
-  // Register FCM Token for push notifications when a session is active
-  useEffect(() => {
-    if (!session) return;
-
-    const setupFCM = async () => {
-      if (!('serviceWorker' in navigator) || !('Notification' in window)) {
-        console.warn('FCM is not supported on this browser/device.');
-        return;
-      }
-
-      try {
-        let permission = Notification.permission;
-        if (permission === 'default') {
-          permission = await Notification.requestPermission();
-        }
-
-        if (permission !== 'granted') {
-          console.warn('Notification permission was denied. Push notifications cannot be delivered.');
-          return;
-        }
-
-        const reg = await navigator.serviceWorker.ready;
-        
-        // Dynamic imports to ensure client-only execution and prevent node compilation warnings
-        const { getMessaging, getToken } = await import('firebase/messaging');
-        const { getApp } = await import('firebase/app');
-        const { doc, setDoc } = await import('firebase/firestore');
-        const { db } = await import('./lib/firebase');
-
-        const app = getApp();
-        const messaging = getMessaging(app);
-
-        // Fetch standard FCM registration token using active SW registration
-        const token = await getToken(messaging, { serviceWorkerRegistration: reg });
-        
-        if (token) {
-          console.log('[App FCM] Successfully fetched client device FCM token:', token);
-          
-          // Save or refresh token details in Firestore fcm_tokens collection
-          const tokenRef = doc(db, 'fcm_tokens', token);
-          await setDoc(tokenRef, {
-            token,
-            wing: session.wing || '',
-            flatNo: session.flatNo ? Number(session.flatNo) : 0,
-            role: session.role,
-            lastUpdated: new Date().toISOString()
-          });
-          
-          console.log('[App FCM] Registered FCM token in Firestore fcm_tokens.');
-        } else {
-          console.warn('[App FCM] No FCM token returned from getToken().');
-        }
-      } catch (err) {
-        console.error('[App FCM] Failed to fetch or register FCM token:', err);
-      }
-    };
-
-    const timer = setTimeout(setupFCM, 3000);
-    return () => clearTimeout(timer);
-  }, [session]);
-
   // Synchronize current user session details to Cache Storage for PWA Service Worker background access
   useEffect(() => {
     if ('caches' in window) {

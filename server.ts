@@ -19,7 +19,6 @@ import {
   deleteVisitorRequest,
   seedDatabaseIfNeeded
 } from './src/lib/firebase';
-import { startServerNotificationListener } from './src/lib/server-fcm';
 
 async function startServer() {
   const app = express();
@@ -34,13 +33,6 @@ async function startServer() {
     await seedDatabaseIfNeeded();
   } catch (err) {
     console.error('Initial Firestore seeding failed:', err);
-  }
-
-  // Initialize and spin up background push notification triggers on the server
-  try {
-    startServerNotificationListener();
-  } catch (err) {
-    console.error('Failed to initialize server-side FCM notification listeners:', err);
   }
 
   // --- API ROUTES ---

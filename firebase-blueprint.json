@@ -61,19 +61,6 @@
         "password": { "type": "string" }
       },
       "required": ["wing", "flatNo", "password"]
-    },
-    "FCMToken": {
-      "title": "FCMToken",
-      "description": "Registered device push notification token for a flat",
-      "type": "object",
-      "properties": {
-        "token": { "type": "string" },
-        "wing": { "type": "string" },
-        "flatNo": { "type": "integer" },
-        "role": { "type": "string" },
-        "lastUpdated": { "type": "string", "format": "date-time" }
-      },
-      "required": ["token", "wing", "flatNo", "role", "lastUpdated"]
     }
   },
   "firestore": {
@@ -88,10 +75,6 @@
     "passwords": {
       "schema": "Password",
       "description": "Stored flat login passwords"
-    },
-    "fcm_tokens": {
-      "schema": "FCMToken",
-      "description": "Registered device tokens for push notifications"
     }
   }
 }
