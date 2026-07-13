@@ -516,22 +516,12 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
       
       {/* Top Controls: Manual Refresh & Sync */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-white border border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm gap-4">
-        <div className="flex items-center gap-3 text-left">
-          <div className="w-10 h-10 rounded-lg overflow-hidden border border-slate-200 shadow-xs flex items-center justify-center bg-white p-0.5 shrink-0">
-            <img 
-              src="https://i.ibb.co/zT5tpcdY/1000296229-1.png" 
-              alt="Orchid Heights Logo" 
-              className="w-full h-full object-contain"
-              referrerPolicy="no-referrer"
-            />
-          </div>
-          <div>
-            <h1 className="font-display font-bold text-xl text-slate-800 tracking-tight flex items-center space-x-2">
-              <span className="inline-block w-2.5 h-2.5 bg-indigo-600 rounded-full animate-pulse"></span>
-              <span>{t('panelTitle')}</span>
-            </h1>
-            <p className="text-xs text-slate-400 mt-0.5">{t('panelSub')}</p>
-          </div>
+        <div className="text-left">
+          <h1 className="font-display font-bold text-xl text-slate-800 tracking-tight flex items-center space-x-2">
+            <span className="inline-block w-2.5 h-2.5 bg-indigo-600 rounded-full animate-pulse"></span>
+            <span>{t('panelTitle')}</span>
+          </h1>
+          <p className="text-xs text-slate-400 mt-0.5">{t('panelSub')}</p>
         </div>
         <div className="flex flex-wrap items-center gap-4 sm:ml-auto">
           {/* Language Toggle Button */}
@@ -711,10 +701,7 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
                 <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">{t('guestType')} <span className="text-red-500">*</span></label>
                 <select
                   value={guestType}
-                  onChange={(e) => {
-                    setGuestType(e.target.value);
-                    setSelectedHelperId(null);
-                  }}
+                  onChange={(e) => setGuestType(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl py-2.5 px-3.5 text-sm font-medium transition outline-none cursor-pointer"
                 >
                   <option value="Delivery">{lang === 'EN' ? 'Delivery / Courier' : '📦 ડિલિવરી / કુરિયર'}</option>

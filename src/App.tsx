@@ -14,7 +14,6 @@ import ResidentDashboard from './components/ResidentDashboard';
 import Directory from './components/Directory';
 import AdminPage from './components/AdminPage';
 import { api, detectServerEnvironment } from './lib/api';
-import FirestoreQuotaBanner from './components/FirestoreQuotaBanner';
 
 export default function App() {
   // Session details stored in localStorage for persistent logins
@@ -79,61 +78,7 @@ export default function App() {
     }
   }, []);
 
-  // Foreground synthesized chime alert for push notifications
-  useEffect(() => {
-    const playChime = () => {
-      try {
-        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-        if (!AudioContextClass) return;
-        const ctx = new AudioContextClass();
-        
-        // Pleasant double bell-like chime
-        const osc1 = ctx.createOscillator();
-        const gain1 = ctx.createGain();
-        osc1.type = 'sine';
-        osc1.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-        gain1.gain.setValueAtTime(0.12, ctx.currentTime);
-        gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
-        osc1.connect(gain1);
-        gain1.connect(ctx.destination);
-        osc1.start();
-        osc1.stop(ctx.currentTime + 0.5);
-        
-        setTimeout(() => {
-          try {
-            const osc2 = ctx.createOscillator();
-            const gain2 = ctx.createGain();
-            osc2.type = 'sine';
-            osc2.frequency.setValueAtTime(880, ctx.currentTime); // A5
-            gain2.gain.setValueAtTime(0.08, ctx.currentTime);
-            gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
-            osc2.connect(gain2);
-            gain2.connect(ctx.destination);
-            osc2.start();
-            osc2.stop(ctx.currentTime + 0.6);
-          } catch (e) {
-            console.warn(e);
-          }
-        }, 110);
-      } catch (err) {
-        console.warn('Could not play notification chime:', err);
-      }
-    };
-
-    const handleSWMessage = (event: MessageEvent) => {
-      if (event.data && (event.data.type === 'FCM_NOTIFICATION_RECEIVED' || event.data.type === 'VISITOR_ACTION')) {
-        console.log('[App] Received push notification signal from SW:', event.data);
-        playChime();
-      }
-    };
-
-    navigator.serviceWorker?.addEventListener('message', handleSWMessage);
-    return () => {
-      navigator.serviceWorker?.removeEventListener('message', handleSWMessage);
-    };
-  }, []);
-
-  // Set default tabs based on authenticated roles & URL paths
+  // Set default tabs based on authenticated roles
   useEffect(() => {
     if (session) {
       if (session.role === 'security') {
@@ -142,7 +87,7 @@ export default function App() {
         setActiveTab('resident');
       }
     } else {
-      setActiveTab('resident');
+      setActiveTab('directory');
     }
   }, [session]);
 
@@ -259,101 +204,105 @@ export default function App() {
   const handleLogout = () => {
     setSession(null);
     localStorage.removeItem('orchid_gate_session');
-    setActiveTab('resident');
+    setActiveTab('directory');
   };
 
   return (
-    <>
-      <FirestoreQuotaBanner />
-      <Routes>
-        <Route
-          path="/admin"
-          element={
-            <AdminPage
-              owners={owners}
-              onRefreshOwners={loadOwners}
-              adminSession={adminSession}
-              setAdminSession={setAdminSession}
-            />
-          }
-        />
-        <Route
-          path="/*"
-          element={
-            loadingOwners && owners.length === 0 ? (
-              <div className="min-h-screen flex items-center justify-center bg-slate-50">
-                <div className="text-center space-y-4">
-                  <div className="inline-block border-4 border-indigo-600 border-t-transparent rounded-full w-10 h-10 animate-spin"></div>
-                  <p className="text-sm font-semibold text-slate-600 font-display">Powering up Orchid Heights Gatekeeper...</p>
+    <Routes>
+      <Route
+        path="/admin"
+        element={
+          <AdminPage
+            owners={owners}
+            onRefreshOwners={loadOwners}
+            adminSession={adminSession}
+            setAdminSession={setAdminSession}
+          />
+        }
+      />
+      <Route
+        path="/*"
+        element={
+          loadingOwners && owners.length === 0 ? (
+            <div className="min-h-screen flex items-center justify-center bg-slate-50">
+              <div className="text-center space-y-4">
+                <div className="inline-block border-4 border-indigo-600 border-t-transparent rounded-full w-10 h-10 animate-spin"></div>
+                <p className="text-sm font-semibold text-slate-600 font-display">Powering up Orchid Heights Gatekeeper...</p>
+              </div>
+            </div>
+          ) : !session ? (
+            <AnimatePresence mode="wait">
+              <motion.div
+                key="login-page"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                transition={{ duration: 0.3 }}
+              >
+                <Login onLoginSuccess={handleLoginSuccess} />
+              </motion.div>
+            </AnimatePresence>
+          ) : (
+            <div className="min-h-screen bg-slate-50 flex flex-col font-sans antialiased text-slate-900">
+              {/* Navigation Header */}
+              <Navbar
+                session={session}
+                onLogout={handleLogout}
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
+              />
+
+              {/* Main Layout Stage */}
+              <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={activeTab}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.2 }}
+                    className="w-full h-full"
+                  >
+                    {activeTab === 'security' && session.role === 'security' && (
+                      <SecurityDashboard
+                        owners={owners}
+                        onRefreshOwners={loadOwners}
+                      />
+                    )}
+
+                    {activeTab === 'resident' && (session.role === 'owner' || session.role === 'admin') && (
+                      <ResidentDashboard
+                        session={session}
+                        owners={owners}
+                        onRefreshOwners={loadOwners}
+                      />
+                    )}
+
+                    {activeTab === 'directory' && (
+                      <Directory
+                        owners={owners}
+                        session={session}
+                      />
+                    )}
+                  </motion.div>
+                </AnimatePresence>
+              </main>
+
+              {/* Footer Branding Panel */}
+              <footer className="bg-white border-t border-slate-200 py-6 mt-auto">
+                <div className="max-w-7xl mx-auto px-4 text-center space-y-1">
+                  <p className="text-xs font-semibold text-slate-500">
+                    Orchid Heights Gatekeeper • Smart Visitor Protection Panel
+                  </p>
+                  <p className="text-[10px] text-slate-400 font-medium">
+                    Developed in high-fidelity full stack. All rights reserved. 
+                  </p>
                 </div>
-              </div>
-            ) : !session ? (
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key="login-page"
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -15 }}
-                  transition={{ duration: 0.3 }}
-                >
-                  <Login onLoginSuccess={handleLoginSuccess} />
-                </motion.div>
-              </AnimatePresence>
-            ) : (
-              <div className="min-h-screen bg-slate-50 flex flex-col font-sans antialiased text-slate-900">
-                {/* Navigation Header */}
-                <Navbar
-                  session={session}
-                  onLogout={handleLogout}
-                  activeTab={activeTab}
-                  setActiveTab={setActiveTab}
-                />
-
-                {/* Main Layout Stage */}
-                <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                  <AnimatePresence mode="wait">
-                    <motion.div
-                      key={activeTab}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      transition={{ duration: 0.2 }}
-                      className="w-full h-full"
-                    >
-                      {activeTab === 'security' && session.role === 'security' && (
-                        <SecurityDashboard
-                          owners={owners}
-                          onRefreshOwners={loadOwners}
-                        />
-                      )}
-
-                      {activeTab === 'resident' && (session.role === 'owner' || session.role === 'admin') && (
-                        <ResidentDashboard
-                          session={session}
-                          owners={owners}
-                          onRefreshOwners={loadOwners}
-                        />
-                      )}
-                    </motion.div>
-                  </AnimatePresence>
-                </main>
-
-                {/* Footer Branding Panel */}
-                <footer className="bg-white border-t border-slate-200 py-6 mt-auto">
-                  <div className="max-w-7xl mx-auto px-4 text-center space-y-1">
-                    <p className="text-xs font-semibold text-slate-500">
-                      Orchid Heights Gatekeeper • Smart Visitor Protection Panel
-                    </p>
-                    <p className="text-[10px] text-slate-400 font-medium">
-                      Developed in high-fidelity full stack. All rights reserved. 
-                    </p>
-                  </div>
-                </footer>
-              </div>
-            )
-          }
-        />
-      </Routes>
-    </>
+              </footer>
+            </div>
+          )
+        }
+      />
+    </Routes>
   );
 }

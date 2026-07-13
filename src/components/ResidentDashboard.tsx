@@ -3,8 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
 import { Bell, ShieldAlert, Check, X, Users, Car, Phone, Lock, Eye, EyeOff, ClipboardList, AlertCircle, Trash2, Plus, Clock, RefreshCw, Megaphone, FileText, Download, Search, Wrench, CheckCircle, Upload, Calendar, Home, User, Dumbbell, Film, Sparkles, BookOpen, MapPin, CheckSquare, PlusCircle, ChevronRight, ArrowLeft } from 'lucide-react';
 import { FlatOwner, Visitor, Vehicle, UserSession, Announcement, AmenityBooking, GymTheatreLog, DailyHelper, AbsenceLog, EssentialContact } from '../types';
 import { api, detectServerEnvironment } from '../lib/api';
@@ -25,43 +24,6 @@ let alarmIntervalId: any = null;
 let alarmAudioContext: AudioContext | null = null;
 let alarmStateListener: ((active: boolean) => void) | null = null;
 
-const playNotificationSound = () => {
-  try {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContextClass) return;
-    const ctx = new AudioContextClass();
-    const now = ctx.currentTime;
-    
-    // Create dual-tone pleasant high-contrast chime
-    const osc1 = ctx.createOscillator();
-    const osc2 = ctx.createOscillator();
-    const gain = ctx.createGain();
-    
-    osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(880, now); // A5
-    osc1.frequency.exponentialRampToValueAtTime(1200, now + 0.15);
-    
-    osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(1046.5, now); // C6
-    osc2.frequency.exponentialRampToValueAtTime(1500, now + 0.15);
-    
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.3, now + 0.05);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
-    
-    osc1.connect(gain);
-    osc2.connect(gain);
-    gain.connect(ctx.destination);
-    
-    osc1.start(now);
-    osc2.start(now);
-    osc1.stop(now + 0.35);
-    osc2.stop(now + 0.35);
-  } catch (err) {
-    console.warn('Notification chime failed:', err);
-  }
-};
-
 const playHighFrequencyAlarm = () => {
   if (alarmIntervalId) return; // already playing
   try {
@@ -76,34 +38,22 @@ const playHighFrequencyAlarm = () => {
         ctx.resume();
       }
       const now = ctx.currentTime;
-      
-      // Dual oscillators for an authentic, extremely loud and buzzy "ring-alarm"
-      const osc1 = ctx.createOscillator();
-      const osc2 = ctx.createOscillator();
+      const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       
-      osc1.type = 'sawtooth'; // rich harmonics, highly audible on all speakers
-      osc1.frequency.setValueAtTime(toggle ? 880 : 660, now);
-      
-      osc2.type = 'triangle'; // adds solid acoustic body
-      osc2.frequency.setValueAtTime(toggle ? 440 : 330, now);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(toggle ? 3200 : 2800, now);
       
       gain.gain.setValueAtTime(0, now);
-      gain.gain.linearRampToValueAtTime(1.2, now + 0.05);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+      gain.gain.linearRampToValueAtTime(1.0, now + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
       
-      osc1.connect(gain);
-      osc2.connect(gain);
+      osc.connect(gain);
       gain.connect(ctx.destination);
-      
-      osc1.start(now);
-      osc2.start(now);
-      
-      osc1.stop(now + 0.5);
-      osc2.stop(now + 0.5);
-      
+      osc.start(now);
+      osc.stop(now + 0.4);
       toggle = !toggle;
-    }, 650);
+    }, 500);
 
     if (alarmStateListener) {
       alarmStateListener(true);
@@ -115,44 +65,6 @@ const playHighFrequencyAlarm = () => {
     }, 25000);
   } catch (err) {
     console.warn('Could not play high frequency alarm sound:', err);
-  }
-};
-
-const playNotificationChime = () => {
-  try {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContextClass) return;
-    const ctx = new AudioContextClass();
-    const now = ctx.currentTime;
-    
-    // Beautiful, high-quality ding-dong chime
-    const osc1 = ctx.createOscillator();
-    const osc2 = ctx.createOscillator();
-    const gain = ctx.createGain();
-    
-    osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(880, now); // A5
-    osc1.frequency.exponentialRampToValueAtTime(110, now + 0.5);
-    
-    osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(1320, now); // E6
-    osc2.frequency.exponentialRampToValueAtTime(165, now + 0.4);
-    
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.5, now + 0.05);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
-    
-    osc1.connect(gain);
-    osc2.connect(gain);
-    gain.connect(ctx.destination);
-    
-    osc1.start(now);
-    osc2.start(now);
-    
-    osc1.stop(now + 0.8);
-    osc2.stop(now + 0.8);
-  } catch (err) {
-    console.warn('Notification chime failed:', err);
   }
 };
 
@@ -328,84 +240,6 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   // Bottom Bar Main Tabs & Sub-sections
   const [activeMainTab, setActiveMainTab] = useState<'community' | 'personal'>('community');
   const [activeSubSection, setActiveSubSection] = useState<string | null>(null);
-  
-  const location = useLocation();
-  const navigate = useNavigate();
-
-  // Sync state to URL pathname
-  useEffect(() => {
-    const currentPath = location.pathname;
-    let expectedPath = '/';
-
-    if (activeMainTab === 'personal') {
-      expectedPath = '/profile';
-    } else if (activeSubSection === 'visitors') {
-      expectedPath = '/visitors';
-    } else if (activeSubSection === 'directory') {
-      expectedPath = '/directory';
-    } else if (activeSubSection === 'services') {
-      expectedPath = '/services';
-    } else if (activeSubSection === 'helpdesk') {
-      if (currentPath === '/notices') {
-        expectedPath = '/notices';
-      } else {
-        expectedPath = '/helpdesk';
-      }
-    } else if (activeSubSection === 'complaints') {
-      expectedPath = '/complaintbox';
-    } else if (activeSubSection === 'notifications') {
-      expectedPath = '/notifications';
-    } else if (activeSubSection === 'amenity') {
-      if (currentPath === '/amenity/gym-theatre' || currentPath === '/amenities/gym-theatre') {
-        expectedPath = currentPath;
-      } else if (currentPath === '/amenity/movies' || currentPath === '/amenities/gym-schedule' || currentPath === '/amenity/gym-schedule') {
-        expectedPath = currentPath;
-      } else if (currentPath === '/amenity/bookings') {
-        expectedPath = '/amenity/bookings';
-      } else {
-        expectedPath = currentPath.startsWith('/amenities') ? '/amenities' : '/amenity';
-      }
-    } else {
-      expectedPath = '/'; // Default landing
-    }
-
-    if (currentPath !== expectedPath && !currentPath.startsWith(expectedPath)) {
-      navigate(expectedPath);
-    }
-  }, [activeMainTab, activeSubSection, location.pathname]);
-
-  // Sync URL pathname to state
-  useEffect(() => {
-    const path = location.pathname;
-    
-    if (path === '/profile') {
-      if (activeMainTab !== 'personal') setActiveMainTab('personal');
-      if (activeSubSection !== null) setActiveSubSection(null);
-    } else {
-      if (activeMainTab !== 'community') setActiveMainTab('community');
-      
-      if (path === '/visitors') {
-        if (activeSubSection !== 'visitors') setActiveSubSection('visitors');
-      } else if (path === '/directory') {
-        if (activeSubSection !== 'directory') setActiveSubSection('directory');
-      } else if (path === '/services') {
-        if (activeSubSection !== 'services') setActiveSubSection('services');
-      } else if (path === '/helpdesk') {
-        if (activeSubSection !== 'helpdesk') setActiveSubSection('helpdesk');
-      } else if (path === '/notices') {
-        if (activeSubSection !== 'helpdesk') setActiveSubSection('helpdesk');
-      } else if (path === '/complaintbox') {
-        if (activeSubSection !== 'complaints') setActiveSubSection('complaints');
-      } else if (path === '/notifications') {
-        if (activeSubSection !== 'notifications') setActiveSubSection('notifications');
-      } else if (path.startsWith('/amenity') || path.startsWith('/amenities')) {
-        if (activeSubSection !== 'amenity') setActiveSubSection('amenity');
-      } else if (path === '/' || path === '') {
-        if (activeSubSection !== null) setActiveSubSection(null);
-      }
-    }
-  }, [location.pathname]);
-
   const [lastVisitedSubSection, setLastVisitedSubSection] = useState<string | null>(() => localStorage.getItem('orchid_last_visited_block'));
   const [highlightBlock, setHighlightBlock] = useState<string | null>(null);
 
@@ -416,59 +250,6 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   const [absenceLogs, setAbsenceLogs] = useState<AbsenceLog[]>([]);
   const [essentialContacts, setEssentialContacts] = useState<EssentialContact[]>([]);
   const [societyNotifications, setSocietyNotifications] = useState<any[]>([]);
-  const [indexedDbNotifications, setIndexedDbNotifications] = useState<any[]>([]);
-
-  // Load notifications from local IndexedDB for complete 2-week persistent push notifications history
-  useEffect(() => {
-    const loadIndexedDBNotifs = () => {
-      try {
-        const req = indexedDB.open('orchid_notifications_db', 1);
-        req.onsuccess = (e: any) => {
-          const db = e.target.result;
-          if (!db.objectStoreNames.contains('notifications')) return;
-          const tx = db.transaction('notifications', 'readonly');
-          const store = tx.objectStore('notifications');
-          const getReq = store.getAll();
-          getReq.onsuccess = () => {
-            const list = getReq.result || [];
-            // Sort by timestamp desc
-            list.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-            setIndexedDbNotifications(list);
-          };
-        };
-      } catch (err) {
-        console.warn('Error reading notifications from IndexedDB:', err);
-      }
-    };
-
-    loadIndexedDBNotifs();
-
-    // Listen to push notification signals from SW to refresh the list instantly
-    const handleSWNotification = () => {
-      loadIndexedDBNotifs();
-    };
-    navigator.serviceWorker?.addEventListener('message', handleSWNotification);
-    return () => {
-      navigator.serviceWorker?.removeEventListener('message', handleSWNotification);
-    };
-  }, []);
-
-  // Merge Firestore-live notifications with local IndexedDB background push-notifications
-  const combinedNotifications = useMemo(() => {
-    const combined = [...societyNotifications];
-    indexedDbNotifications.forEach((idbNotif) => {
-      if (!combined.some((n) => n.id === idbNotif.id)) {
-        combined.push(idbNotif);
-      }
-    });
-    // Sort chronologically (newest first)
-    combined.sort((a, b) => {
-      const timeA = a.timestamp || a.createdAt ? new Date(a.timestamp || a.createdAt).getTime() : 0;
-      const timeB = b.timestamp || b.createdAt ? new Date(b.timestamp || b.createdAt).getTime() : 0;
-      return timeB - timeA;
-    });
-    return combined;
-  }, [societyNotifications, indexedDbNotifications]);
   const [dismissedNotifIds, setDismissedNotifIds] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('orchid_dismissed_notifs');
@@ -477,33 +258,6 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
       return [];
     }
   });
-
-  const playedNotifIdsRef = useRef<Set<string>>(new Set());
-
-  // Real-time pleasant chime sound for brand new incoming notifications
-  useEffect(() => {
-    if (societyNotifications.length === 0) return;
-    
-    let hasNew = false;
-    societyNotifications.forEach((n) => {
-      const id = n.id;
-      if (!id) return;
-      
-      const createdTime = n.timestamp || n.createdAt ? new Date(n.timestamp || n.createdAt).getTime() : Date.now();
-      const isRecent = (Date.now() - createdTime) < 12000; // within 12 seconds
-      
-      if (!playedNotifIdsRef.current.has(id)) {
-        playedNotifIdsRef.current.add(id);
-        if (isRecent) {
-          hasNew = true;
-        }
-      }
-    });
-    
-    if (hasNew) {
-      playNotificationSound();
-    }
-  }, [societyNotifications]);
 
   // Sub-tabs state inside Resident Portal
   const [residentTab, setResidentTab] = useState<'home' | 'notices' | 'complaints' | 'financials' | 'contacts'>('home');
@@ -638,86 +392,6 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
       };
     }
   }, [activeSubSection, lastVisitedSubSection]);
-
-  // Sync activeSubSection changes with browser URL history paths
-  useEffect(() => {
-    if (activeSubSection) {
-      let path = `/${activeSubSection}`;
-      if (activeSubSection === 'helpdesk') {
-        if (window.location.pathname.startsWith('/helpdesk')) {
-          path = window.location.pathname;
-        } else {
-          path = '/helpdesk';
-        }
-      } else if (activeSubSection === 'amenity') {
-        if (window.location.pathname.startsWith('/amenity')) {
-          path = window.location.pathname;
-        } else {
-          path = '/amenity';
-        }
-      }
-      if (window.location.pathname !== path) {
-        window.history.pushState({ sub: activeSubSection }, '', path);
-      }
-    } else {
-      if (window.location.pathname !== '/' && window.location.pathname !== '/resident') {
-        window.history.pushState(null, '', '/');
-      }
-    }
-  }, [activeSubSection]);
-
-  // Handle back button / popstate triggers to update activeSubSection
-  useEffect(() => {
-    const handlePopState = () => {
-      const path = window.location.pathname;
-      if (path === '/visitors') {
-        setLastVisitedSubSection('visitors');
-        setActiveSubSection('visitors');
-      } else if (path === '/complaints' || path === '/complaintbox') {
-        setLastVisitedSubSection('complaints');
-        setActiveSubSection('complaints');
-      } else if (path === '/directory') {
-        setLastVisitedSubSection('directory');
-        setActiveSubSection('directory');
-      } else if (path.startsWith('/amenity') || path.startsWith('/amenities')) {
-        setLastVisitedSubSection('amenity');
-        setActiveSubSection('amenity');
-      } else if (path === '/services') {
-        setLastVisitedSubSection('services');
-        setActiveSubSection('services');
-      } else if (path.startsWith('/helpdesk')) {
-        setLastVisitedSubSection('helpdesk');
-        setActiveSubSection('helpdesk');
-      } else if (path === '/notifications' || path === '/alerts') {
-        setLastVisitedSubSection('notifications');
-        setActiveSubSection('notifications');
-      } else if (path === '/notices' || path === '/noticeboard') {
-        setLastVisitedSubSection('notices');
-        setActiveSubSection('notices');
-      } else {
-        setActiveSubSection(null);
-      }
-    };
-
-    window.addEventListener('popstate', handlePopState);
-    // run popstate check once on mount
-    handlePopState();
-
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
-
-  // Play custom chime on receiving a new society notification
-  const prevNotifsLength = useRef<number>(-1);
-  useEffect(() => {
-    if (societyNotifications.length > 0) {
-      if (prevNotifsLength.current !== -1 && societyNotifications.length > prevNotifsLength.current) {
-        playNotificationChime();
-      }
-      prevNotifsLength.current = societyNotifications.length;
-    } else {
-      prevNotifsLength.current = 0;
-    }
-  }, [societyNotifications]);
 
   // Amenities Function booking form states
   const [fPropertyName, setFPropertyName] = useState<string>('Clubhouse Party Hall');
@@ -893,8 +567,16 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
       return;
     }
 
-    // Store selected photo file for upload
+    // Verify 15-minute maximum age of the photo to ensure it is live/recent
     setExitPhotoFile(file);
+    const fileAgeMs = Date.now() - file.lastModified;
+    const fileAgeMinutes = fileAgeMs / 60000;
+    if (fileAgeMinutes > 15) {
+      setGymTheatreError('Security Audit: The exit photo must be a live image captured within the last 15 minutes. Please snap a new photo.');
+      setExitPhotoTimeError(true);
+      setExitPhotoBase64('');
+      return;
+    }
 
     // Compress the live selfie image to keep database payload ultra-lightweight and prevent size limit crashes
     compressImage(file, 500, 500, 0.5)
@@ -907,26 +589,6 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
         console.error('Exit photo compression failed:', err);
         setGymTheatreError('Failed to process image compression.');
       });
-  };
-
-  const handleExitPhotoBase64Capture = (base64: string) => {
-    setExitPhotoBase64(base64);
-    setExitPhotoTimeError(false);
-    setGymTheatreError('');
-    try {
-      const arr = base64.split(',');
-      const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
-      const bstr = atob(arr[1]);
-      let n = bstr.length;
-      const u8arr = new Uint8Array(n);
-      while (n--) {
-        u8arr[n] = bstr.charCodeAt(n);
-      }
-      const file = new File([u8arr], `exit_${activeCheckInLog?.id || 'selfie'}.jpg`, { type: mime });
-      setExitPhotoFile(file);
-    } catch (e) {
-      console.error('Failed to parse base64 to file', e);
-    }
   };
 
   // Confirm Check Out with Image upload
@@ -1447,7 +1109,7 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   const firstName = fullName.split(' ')[0] || 'Rahul';
   const nameGu = myOwnerData?.nameGu || 'રાહુલ જશવંતરાય પોપટ';
   const flatStr = `Flat ${wing}-${flatNo}`;
-  const activeSocietyNotifs = combinedNotifications.filter((n) => !dismissedNotifIds.includes(n.id));
+  const activeSocietyNotifs = societyNotifications.filter((n) => !dismissedNotifIds.includes(n.id));
 
   return (
     <div className="space-y-6 text-slate-800 pb-24 text-left">
@@ -1546,9 +1208,9 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                   title="Open Notifications Panel"
                 >
                   <Bell className="w-4.5 h-4.5" />
-                  {(combinedNotifications.filter((n) => !dismissedNotifIds.includes(n.id)).length + activeSosAlerts.length) > 0 && (
+                  {(societyNotifications.filter((n) => !dismissedNotifIds.includes(n.id)).length + activeSosAlerts.length) > 0 && (
                     <span className="absolute -top-1 -right-1 w-4.5 h-4.5 bg-[#7C3AED] text-white text-[8px] font-black rounded-full flex items-center justify-center shadow animate-bounce">
-                      {combinedNotifications.filter((n) => !dismissedNotifIds.includes(n.id)).length + activeSosAlerts.length}
+                      {societyNotifications.filter((n) => !dismissedNotifIds.includes(n.id)).length + activeSosAlerts.length}
                     </span>
                   )}
                 </button>
@@ -1856,7 +1518,7 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                 <div className="flex items-center justify-between w-full">
                   <div className="w-11 h-11 rounded-full bg-[#EF4444] text-white flex items-center justify-center shrink-0 shadow-sm relative">
                     <Bell className="w-5 h-5" />
-                    {combinedNotifications.filter((n) => !dismissedNotifIds.includes(n.id)).length > 0 && (
+                    {societyNotifications.filter((n) => !dismissedNotifIds.includes(n.id)).length > 0 && (
                       <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-rose-600 rounded-full animate-ping" />
                     )}
                   </div>
@@ -1939,7 +1601,6 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                 handleVoteAmenityBooking={handleVoteAmenityBooking}
                 handleCheckInGymTheatre={handleCheckInGymTheatre}
                 handleCheckOutGymTheatreFlow={handleCheckOutGymTheatreFlow}
-                handleExitPhotoBase64Capture={handleExitPhotoBase64Capture}
                 showExitPhotoModal={showExitPhotoModal}
                 setShowExitPhotoModal={setShowExitPhotoModal}
                 exitPhotoBase64={exitPhotoBase64}
@@ -2057,7 +1718,7 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                   const twoWeeksAgo = new Date();
                   twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
 
-                  const filteredNotifs = combinedNotifications.filter((n) => {
+                  const filteredNotifs = societyNotifications.filter((n) => {
                     const notifTime = n.timestamp ? new Date(n.timestamp).getTime() : Date.now();
                     return notifTime >= twoWeeksAgo.getTime();
                   });
@@ -2177,8 +1838,12 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                               {notif.type === 'movie_schedule' && (
                                 <button
                                   onClick={() => {
-                                    const movieId = notif.metadata?.movieId || '';
-                                    navigate(`/amenities/gym-schedule?movieId=${movieId}`);
+                                    setLastVisitedSubSection('amenity');
+                                    setActiveSubSection('amenity');
+                                    localStorage.setItem('orchid_deep_redirect', 'movies');
+                                    setTimeout(() => {
+                                      window.dispatchEvent(new Event('orchid_amenities_redirect'));
+                                    }, 100);
                                   }}
                                   className="text-[9px] font-black uppercase tracking-tight bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-100 px-2 py-1 rounded-lg cursor-pointer animate-pulse"
                                 >
@@ -2189,57 +1854,13 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                               {notif.type === 'complaint' && (
                                 <button
                                   onClick={() => {
-                                    const complaintId = notif.metadata?.complaintId || notif.metadata?.id || '';
-                                    navigate(`/complaintbox?complaintId=${complaintId}`);
+                                    setLastVisitedSubSection('complaints');
+                                    setActiveSubSection('complaints');
                                   }}
                                   className="text-[9px] font-black uppercase tracking-tight bg-pink-50 hover:bg-pink-100 text-pink-700 border border-pink-100 px-2 py-1 rounded-lg cursor-pointer"
                                 >
                                   Open Ticket
                                 </button>
-                              )}
-
-                              {notif.type === 'notice' && (
-                                <button
-                                  onClick={() => {
-                                    const noticeId = notif.metadata?.noticeId || notif.metadata?.id || '';
-                                    navigate(`/helpdesk?noticeId=${noticeId}`);
-                                  }}
-                                  className="text-[9px] font-black uppercase tracking-tight bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-100 px-2 py-1 rounded-lg cursor-pointer"
-                                >
-                                  Open Notice
-                                </button>
-                              )}
-
-                              {notif.type === 'visitor' && (notif.status === 'pending' || !notif.status) && notif.metadata?.visitorId && (
-                                <div className="flex items-center gap-1">
-                                  <button
-                                    onClick={async () => {
-                                      try {
-                                        await handleRespond(notif.metadata.visitorId, 'approved');
-                                        alert('Visitor approved successfully.');
-                                      } catch (err) {
-                                        alert('Failed to approve visitor.');
-                                      }
-                                    }}
-                                    className="text-[9px] font-black uppercase tracking-tight bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded-lg cursor-pointer"
-                                  >
-                                    Allow Entry
-                                  </button>
-                                  <button
-                                    onClick={async () => {
-                                      const reason = prompt('Enter rejection reason (optional):') || 'Rejected by owner';
-                                      try {
-                                        await handleRespond(notif.metadata.visitorId, 'rejected', reason);
-                                        alert('Visitor entry denied.');
-                                      } catch (err) {
-                                        alert('Failed to deny visitor.');
-                                      }
-                                    }}
-                                    className="text-[9px] font-black uppercase tracking-tight bg-rose-600 hover:bg-rose-700 text-white px-2 py-1 rounded-lg cursor-pointer"
-                                  >
-                                    Deny Entry
-                                  </button>
-                                </div>
                               )}
 
                               {!isDismissed ? (

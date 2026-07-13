@@ -6,19 +6,19 @@
 import { initializeApp } from 'firebase/app';
 import { 
   getFirestore,
-  collection as rawCollection,
-  doc as rawDoc,
-  getDoc as rawGetDoc,
-  getDocs as rawGetDocs,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
   setDoc as rawSetDoc,
   addDoc as rawAddDoc,
   updateDoc as rawUpdateDoc,
-  deleteDoc as rawDeleteDoc,
-  query as rawQuery,
-  limit as rawLimit,
-  onSnapshot as rawOnSnapshot,
-  where as rawWhere,
-  orderBy as rawOrderBy
+  deleteDoc,
+  query,
+  limit,
+  onSnapshot,
+  where,
+  orderBy
 } from 'firebase/firestore';
 import { FlatOwner, Visitor, Announcement, DeviceInfo, Complaint, FinancialReport, EssentialContact } from '../types';
 import { getInitialOwners } from '../data/ownersData';
@@ -28,40 +28,6 @@ const app = initializeApp(firebaseConfig);
 
 // Initialize Firestore with the specific database ID from configuration
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-
-// Shared flag and event-dispatching helpers for quota status
-export function checkQuotaExceeded(): boolean {
-  return localStorage.getItem('firestore_quota_exceeded') === 'true';
-}
-
-export function setQuotaExceeded(val: boolean) {
-  if (val) {
-    if (localStorage.getItem('firestore_quota_exceeded') !== 'true') {
-      localStorage.setItem('firestore_quota_exceeded', 'true');
-      console.warn('⚠️ FIRESTORE QUOTA EXCEEDED: ACTIVATING RESILIENT OFFLINE FALLBACK ENGINE');
-      window.dispatchEvent(new Event('firestore_quota_status_changed'));
-      window.dispatchEvent(new Event('orchid_local_data_changed'));
-    }
-  } else {
-    if (localStorage.getItem('firestore_quota_exceeded') === 'true') {
-      localStorage.removeItem('firestore_quota_exceeded');
-      console.log('✅ FIRESTORE QUOTA CLEAR: RESTORING LIVE SYNC');
-      window.dispatchEvent(new Event('firestore_quota_status_changed'));
-    }
-  }
-}
-
-// Check if an error message suggests Firestore quota limits are exceeded
-function isQuotaError(err: any): boolean {
-  const errMsg = String(err?.message || err || '').toLowerCase();
-  return (
-    errMsg.includes('quota') ||
-    errMsg.includes('exceeded') ||
-    errMsg.includes('limit') ||
-    errMsg.includes('resource_exhausted') ||
-    errMsg.includes('exhausted')
-  );
-}
 
 // Deeply sanitize data to remove undefined values before sending to Firestore
 export function sanitizeData<T>(obj: T): T {
@@ -84,479 +50,30 @@ export function sanitizeData<T>(obj: T): T {
   return obj;
 }
 
-// Path tracking weak maps for references and queries
-const pathMap = new WeakMap<any, string>();
-const constraintsMap = new WeakMap<any, { path: string; constraints: any[]; orderBy: any }>();
-
-export const collection = (firestoreDb: any, path: string) => {
-  const collRef = rawCollection(firestoreDb, path);
-  pathMap.set(collRef, path);
-  return collRef;
+// Export safe, sanitized wrappers for firestore write operations
+export const setDoc = async (ref: any, data: any, options?: any) => {
+  return rawSetDoc(ref, sanitizeData(data), options);
 };
 
-export const doc = (firestoreDb: any, path: string, ...segments: string[]) => {
-  const fullPath = segments.length > 0 ? `${path}/${segments.join('/')}` : path;
-  const docRef = rawDoc(firestoreDb, path, ...segments);
-  pathMap.set(docRef, fullPath);
-  return docRef;
+export const addDoc = async (coll: any, data: any) => {
+  return rawAddDoc(coll, sanitizeData(data));
 };
 
-export const where = (field: string, op: string, value: any) => {
-  const c = rawWhere(field, op as any, value);
-  (c as any)._localConstraint = { field, op, value };
-  return c;
+export const updateDoc = async (ref: any, data: any) => {
+  return rawUpdateDoc(ref, sanitizeData(data));
 };
 
-export const orderBy = (field: string, direction?: string) => {
-  const o = rawOrderBy(field, direction as any);
-  (o as any)._localOrderBy = { field, direction: direction || 'asc' };
-  return o;
-};
-
-export const limit = (num: number) => {
-  return rawLimit(num);
-};
-
-export const query = (queryRef: any, ...queryConstraints: any[]) => {
-  const q = rawQuery(queryRef, ...queryConstraints);
-  const path = pathMap.get(queryRef) || (queryRef ? queryRef.path : '');
-  if (path) {
-    pathMap.set(q, path);
-    
-    const localConstraints: any[] = [];
-    let localOrderBy: any = null;
-    queryConstraints.forEach(c => {
-      if (c && c._localConstraint) {
-        localConstraints.push(c._localConstraint);
-      }
-      if (c && c._localOrderBy) {
-        localOrderBy = c._localOrderBy;
-      }
-    });
-    
-    constraintsMap.set(q, { path, constraints: localConstraints, orderBy: localOrderBy });
-  }
-  return q;
-};
-
-// Helper to parse a standard database reference path
-function parsePath(path: string): { collection: string; docId?: string } {
-  const cleanPath = path ? path.replace(/^\/+|\/+$/g, '') : '';
-  const parts = cleanPath.split('/');
-  return {
-    collection: parts[0] || '',
-    docId: parts[1] || undefined
-  };
-}
-
-// Local storage fallback state manager
-export function getLocalCollection(colName: string): any[] {
-  const key = `orchid_fallback_${colName}`;
-  const saved = localStorage.getItem(key);
-  if (saved) {
-    try {
-      return JSON.parse(saved);
-    } catch {
-      return [];
-    }
-  }
-  
-  // Default fallback seed data
-  let defaults: any[] = [];
-  if (colName === 'owners') {
-    defaults = getInitialOwners();
-  } else if (colName === 'passwords') {
-    defaults = getInitialOwners().map(owner => {
-      const id = `${owner.wing}-${owner.flatNo}`;
-      const password = (owner.wing === 'B' && owner.flatNo === 1104) ? '9898180810' : 'admin@123';
-      return { id, wing: owner.wing, flatNo: owner.flatNo, password };
-    });
-  } else if (colName === 'essential_contacts') {
-    defaults = [
-      { id: 'ec_1', name: 'Ramesh Patel', category: 'Plumber', phone: '9825012345', active: true },
-      { id: 'ec_2', name: 'Kishore Parmar', category: 'Electrician', phone: '9898022334', active: true },
-      { id: 'ec_3', name: 'Gate 1 Guard Duty', category: 'Security', phone: '9426055667', active: true },
-      { id: 'ec_4', name: 'Orchid Heights Manager', category: 'Manager', phone: '9712033445', active: true },
-      { id: 'ec_5', name: 'Manish Mali', category: 'Gardener', phone: '9033099881', active: true }
-    ];
-  } else if (colName === 'financial_reports') {
-    defaults = [
-      {
-        id: 'fin_seed_1',
-        month: 'June',
-        year: 2026,
-        title: 'June 2026 Maintenance & General Fund Accounts',
-        description: 'Society maintenance collections, elevator maintenance, and electricity billing accounts ledger.',
-        pdfUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-        fileName: 'June_2026_Maintenance.pdf',
-        fileType: 'application/pdf',
-        totalExpense: 145000,
-        createdAt: new Date().toISOString(),
-        uploadedBy: 'Rahul Popat (B-1104 / Admin)',
-        reportType: 'expense',
-        attachments: []
-      },
-      {
-        id: 'fin_seed_2',
-        month: 'May',
-        year: 2026,
-        title: 'May 2026 Society Auditor Balance Sheets',
-        description: 'Full balance sheet audited ledger for May 2026 operations.',
-        pdfUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-        fileName: 'May_2026_Audit_Report.pdf',
-        fileType: 'application/pdf',
-        totalExpense: 210000,
-        createdAt: new Date().toISOString(),
-        uploadedBy: 'Rahul Popat (B-1104 / Admin)',
-        reportType: 'expense',
-        attachments: []
-      }
-    ];
-  } else if (colName === 'announcements') {
-    defaults = [
-      {
-        id: 'ann_seed_1',
-        target: 'all',
-        text: '📢 Notice: Q2 Maintenance Payment Dues Reminder. All residents are requested to clear their Q2 maintenance dues by 15th July 2026 to avoid late fees.',
-        timestamp: new Date().toISOString(),
-        sender: 'Orchid Heights Administration',
-        imageUrl: '',
-        videoUrl: ''
-      },
-      {
-        id: 'ann_seed_2',
-        target: 'all',
-        text: '🚪 Biometric Gate System Upgrade: A new modern biometric card reader scanner has been successfully deployed at Gate 1.',
-        timestamp: new Date().toISOString(),
-        sender: 'Orchid Heights Administration',
-        imageUrl: '',
-        videoUrl: ''
-      }
-    ];
-  } else if (colName === 'daily_helpers') {
-    defaults = [
-      { id: 'dh_1', name: 'Pooja (Maid)', phone: '9876543210', role: 'Maid', flats: ['B-1104', 'B-1102'] },
-      { id: 'dh_2', name: 'Ramesh (Milkman)', phone: '9876543211', role: 'Milkman', flats: ['B-1104', 'A-102'] },
-      { id: 'dh_3', name: 'Suresh (Cleaner)', phone: '9876543212', role: 'Car Cleaner', flats: ['B-1104'] },
-      { id: 'dh_4', name: 'Kamlesh (Plumber)', phone: '9876543213', role: 'Other', flats: [] },
-    ];
-  } else if (colName === 'movies_schedule') {
-    defaults = [
-      {
-        id: 'movie_seed_1',
-        title: 'Singham Again',
-        genre: 'Action / Masala',
-        timing: '8:00 PM',
-        day: 'Friday',
-        date: new Date().toISOString().split('T')[0],
-        length: '2h 45m',
-        trailerUrl: 'https://youtube.com',
-        posterUrl: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&w=300&q=80',
-        synopsis: 'The ultimate action cop entertainer is screening at our mini theater this Friday! Fun for the entire family.',
-        rating: 'UA',
-        createdAt: new Date().toISOString(),
-        postedBy: 'B-1104'
-      }
-    ];
-  }
-
-  localStorage.setItem(key, JSON.stringify(defaults));
-  return defaults;
-}
-
-function saveLocalCollection(colName: string, data: any[]) {
-  const key = `orchid_fallback_${colName}`;
-  localStorage.setItem(key, JSON.stringify(data));
-  window.dispatchEvent(new Event('orchid_local_data_changed'));
-}
-
-// In-memory filter evaluating queries on local collections
-function filterLocalList(colName: string, q: any): any[] {
-  let list = [...getLocalCollection(colName)];
-  const queryInfo = constraintsMap.get(q);
-  if (!queryInfo) return list;
-  
-  queryInfo.constraints.forEach(c => {
-    const { field, op, value } = c;
-    list = list.filter(item => {
-      const itemVal = item[field];
-      if (itemVal === undefined) return false;
-      
-      if (op === '==' || op === '===') {
-        return String(itemVal).toUpperCase() === String(value).toUpperCase();
-      }
-      if (op === '!=') {
-        return String(itemVal).toUpperCase() !== String(value).toUpperCase();
-      }
-      if (op === '>') {
-        return itemVal > value;
-      }
-      if (op === '>=') {
-        return itemVal >= value;
-      }
-      if (op === '<') {
-        return itemVal < value;
-      }
-      if (op === '<=') {
-        return itemVal <= value;
-      }
-      if (op === 'array-contains') {
-        return Array.isArray(itemVal) && itemVal.includes(value);
-      }
-      return true;
-    });
-  });
-  
-  if (queryInfo.orderBy) {
-    const { field, direction } = queryInfo.orderBy;
-    list.sort((a, b) => {
-      const valA = a[field];
-      const valB = b[field];
-      if (valA === undefined || valA === null) return 1;
-      if (valB === undefined || valB === null) return -1;
-      
-      let comparison = 0;
-      if (typeof valA === 'string' && typeof valB === 'string') {
-        comparison = valA.localeCompare(valB);
-      } else {
-        comparison = (valA as any) - (valB as any);
-      }
-      return direction === 'desc' ? -comparison : comparison;
-    });
-  }
-  
-  return list;
-}
-
-// Simulated Mock snapshots
-class MockDocumentSnapshot {
-  id: string;
-  private _data: any;
-  existsFlag: boolean;
-  
-  constructor(id: string, data: any, existsFlag = true) {
-    this.id = id;
-    this._data = data;
-    this.existsFlag = existsFlag && data !== undefined && data !== null;
-  }
-  
-  exists() {
-    return this.existsFlag;
-  }
-  
-  data() {
-    return this._data;
-  }
-}
-
-class MockQuerySnapshot {
-  docs: MockDocumentSnapshot[];
-  size: number;
-  empty: boolean;
-  
-  constructor(docs: MockDocumentSnapshot[]) {
-    this.docs = docs;
-    this.size = docs.length;
-    this.empty = docs.length === 0;
-  }
-  
-  forEach(callback: (doc: MockDocumentSnapshot) => void) {
-    this.docs.forEach(callback);
-  }
-}
-
-// High-fidelity wraps executing live database, switching automatically upon rate limit/quota failures
-export const getDoc = async (ref: any): Promise<any> => {
-  if (checkQuotaExceeded()) {
-    const path = pathMap.get(ref) || (ref ? ref.path : '');
-    const { collection: colName, docId } = parsePath(path);
-    if (!docId) return new MockDocumentSnapshot('', undefined, false);
-    const localList = getLocalCollection(colName);
-    const matched = localList.find(item => String(item.id) === String(docId) || String(item.wing + '-' + item.flatNo) === String(docId));
-    return new MockDocumentSnapshot(docId, matched, !!matched);
-  }
-  try {
-    return await rawGetDoc(ref);
-  } catch (error) {
-    if (isQuotaError(error)) {
-      setQuotaExceeded(true);
-      return getDoc(ref);
-    }
-    throw error;
-  }
-};
-
-export const getDocs = async (q: any): Promise<any> => {
-  if (checkQuotaExceeded()) {
-    const path = pathMap.get(q) || (q ? q.path : '');
-    const { collection: colName } = parsePath(path);
-    const filtered = filterLocalList(colName, q);
-    const docs = filtered.map(item => {
-      const itemId = item.id || `${item.wing}-${item.flatNo}`;
-      return new MockDocumentSnapshot(itemId, item, true);
-    });
-    return new MockQuerySnapshot(docs);
-  }
-  try {
-    return await rawGetDocs(q);
-  } catch (error) {
-    if (isQuotaError(error)) {
-      setQuotaExceeded(true);
-      return getDocs(q);
-    }
-    throw error;
-  }
-};
-
-export const setDoc = async (ref: any, data: any, options?: any): Promise<any> => {
-  const sanitized = sanitizeData(data);
-  if (checkQuotaExceeded()) {
-    const path = pathMap.get(ref) || (ref ? ref.path : '');
-    const { collection: colName, docId } = parsePath(path);
-    if (!docId) return;
-    const localList = getLocalCollection(colName);
-    const idx = localList.findIndex(item => String(item.id) === String(docId) || String(item.wing + '-' + item.flatNo) === String(docId));
-    if (idx > -1) {
-      if (options?.merge) {
-        localList[idx] = { ...localList[idx], ...sanitized };
-      } else {
-        localList[idx] = { ...sanitized, id: docId };
-      }
-    } else {
-      localList.push({ ...sanitized, id: docId });
-    }
-    saveLocalCollection(colName, localList);
-    return;
-  }
-  try {
-    return await rawSetDoc(ref, sanitized, options);
-  } catch (error) {
-    if (isQuotaError(error)) {
-      setQuotaExceeded(true);
-      return setDoc(ref, data, options);
-    }
-    throw error;
-  }
-};
-
-export const addDoc = async (coll: any, data: any): Promise<any> => {
-  const sanitized = sanitizeData(data);
-  if (checkQuotaExceeded()) {
-    const path = pathMap.get(coll) || (coll ? coll.path : '');
-    const { collection: colName } = parsePath(path);
-    const docId = 'doc_' + Math.random().toString(36).substring(2, 11);
-    const localList = getLocalCollection(colName);
-    const newItem = { ...sanitized, id: docId };
-    localList.push(newItem);
-    saveLocalCollection(colName, localList);
-    return { id: docId, path: `${colName}/${docId}` } as any;
-  }
-  try {
-    return await rawAddDoc(coll, sanitized);
-  } catch (error) {
-    if (isQuotaError(error)) {
-      setQuotaExceeded(true);
-      return addDoc(coll, data);
-    }
-    throw error;
-  }
-};
-
-export const updateDoc = async (ref: any, data: any): Promise<any> => {
-  const sanitized = sanitizeData(data);
-  if (checkQuotaExceeded()) {
-    const path = pathMap.get(ref) || (ref ? ref.path : '');
-    const { collection: colName, docId } = parsePath(path);
-    if (!docId) return;
-    const localList = getLocalCollection(colName);
-    const idx = localList.findIndex(item => String(item.id) === String(docId) || String(item.wing + '-' + item.flatNo) === String(docId));
-    if (idx > -1) {
-      localList[idx] = { ...localList[idx], ...sanitized };
-      saveLocalCollection(colName, localList);
-    }
-    return;
-  }
-  try {
-    return await rawUpdateDoc(ref, sanitized);
-  } catch (error) {
-    if (isQuotaError(error)) {
-      setQuotaExceeded(true);
-      return updateDoc(ref, data);
-    }
-    throw error;
-  }
-};
-
-export const deleteDoc = async (ref: any): Promise<any> => {
-  if (checkQuotaExceeded()) {
-    const path = pathMap.get(ref) || (ref ? ref.path : '');
-    const { collection: colName, docId } = parsePath(path);
-    if (!docId) return;
-    const localList = getLocalCollection(colName);
-    const filtered = localList.filter(item => String(item.id) !== String(docId) && String(item.wing + '-' + item.flatNo) !== String(docId));
-    saveLocalCollection(colName, filtered);
-    return;
-  }
-  try {
-    return await rawDeleteDoc(ref);
-  } catch (error) {
-    if (isQuotaError(error)) {
-      setQuotaExceeded(true);
-      return deleteDoc(ref);
-    }
-    throw error;
-  }
-};
-
-export const onSnapshot = (ref_or_query: any, onNext: any, onError?: any): any => {
-  if (checkQuotaExceeded()) {
-    const triggerUpdate = () => {
-      try {
-        const path = pathMap.get(ref_or_query) || (ref_or_query ? ref_or_query.path : '');
-        const { collection: colName, docId } = parsePath(path);
-        if (docId) {
-          const localList = getLocalCollection(colName);
-          const matched = localList.find(item => String(item.id) === String(docId) || String(item.wing + '-' + item.flatNo) === String(docId));
-          const snap = new MockDocumentSnapshot(docId, matched, !!matched);
-          onNext(snap as any);
-        } else {
-          const filtered = filterLocalList(colName, ref_or_query);
-          const docs = filtered.map(item => {
-            const itemId = item.id || `${item.wing}-${item.flatNo}`;
-            return new MockDocumentSnapshot(itemId, item, true);
-          });
-          const snap = new MockQuerySnapshot(docs);
-          onNext(snap as any);
-        }
-      } catch (err) {
-        console.error('Mock snapshot listener fail:', err);
-      }
-    };
-    triggerUpdate();
-    window.addEventListener('orchid_local_data_changed', triggerUpdate);
-    return () => {
-      window.removeEventListener('orchid_local_data_changed', triggerUpdate);
-    };
-  }
-  
-  const safeOnError = (error: any) => {
-    if (isQuotaError(error)) {
-      setQuotaExceeded(true);
-      onSnapshot(ref_or_query, onNext, onError);
-      return;
-    }
-    if (onError) onError(error);
-  };
-  
-  try {
-    return rawOnSnapshot(ref_or_query, onNext, safeOnError);
-  } catch (error) {
-    if (isQuotaError(error)) {
-      setQuotaExceeded(true);
-      return onSnapshot(ref_or_query, onNext, onError);
-    }
-    throw error;
-  }
+export {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  deleteDoc,
+  query,
+  limit,
+  onSnapshot,
+  where,
+  orderBy
 };
 
 export enum OperationType {
@@ -1574,11 +1091,11 @@ export function subscribeToSocietyNotifications(
       // visitor notifications which must go ONLY to their specific flat!
       if (data.type === 'visitor') {
         if (data.wing.toUpperCase() === wing.toUpperCase() && Number(data.flatNo) === Number(flatNo)) {
-          list.push({ id: docSnap.id, ...data });
+          list.push(data);
         }
       } else {
         // All other notifications are visible to all owners!
-        list.push({ id: docSnap.id, ...data });
+        list.push(data);
       }
     });
     // Sort: newest first
