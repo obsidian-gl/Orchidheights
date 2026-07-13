@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Bell, ShieldAlert, Check, X, Users, Car, Phone, Lock, Eye, EyeOff, ClipboardList, AlertCircle, Trash2, Plus, Clock, RefreshCw, Megaphone, FileText, Download, Search, Wrench, CheckCircle, Upload, Calendar, Home, User, Dumbbell, Film, Sparkles, BookOpen, MapPin, CheckSquare, PlusCircle, ChevronRight, ArrowLeft } from 'lucide-react';
 import { FlatOwner, Visitor, Vehicle, UserSession, Announcement, AmenityBooking, GymTheatreLog, DailyHelper, AbsenceLog, EssentialContact } from '../types';
 import { api, detectServerEnvironment } from '../lib/api';
@@ -24,6 +25,43 @@ let alarmIntervalId: any = null;
 let alarmAudioContext: AudioContext | null = null;
 let alarmStateListener: ((active: boolean) => void) | null = null;
 
+const playNotificationSound = () => {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    const now = ctx.currentTime;
+    
+    // Create dual-tone pleasant high-contrast chime
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const gain = ctx.createGain();
+    
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(880, now); // A5
+    osc1.frequency.exponentialRampToValueAtTime(1200, now + 0.15);
+    
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(1046.5, now); // C6
+    osc2.frequency.exponentialRampToValueAtTime(1500, now + 0.15);
+    
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.3, now + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+    
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(ctx.destination);
+    
+    osc1.start(now);
+    osc2.start(now);
+    osc1.stop(now + 0.35);
+    osc2.stop(now + 0.35);
+  } catch (err) {
+    console.warn('Notification chime failed:', err);
+  }
+};
+
 const playHighFrequencyAlarm = () => {
   if (alarmIntervalId) return; // already playing
   try {
@@ -38,22 +76,34 @@ const playHighFrequencyAlarm = () => {
         ctx.resume();
       }
       const now = ctx.currentTime;
-      const osc = ctx.createOscillator();
+      
+      // Dual oscillators for an authentic, extremely loud and buzzy "ring-alarm"
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
       const gain = ctx.createGain();
       
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(toggle ? 3200 : 2800, now);
+      osc1.type = 'sawtooth'; // rich harmonics, highly audible on all speakers
+      osc1.frequency.setValueAtTime(toggle ? 880 : 660, now);
+      
+      osc2.type = 'triangle'; // adds solid acoustic body
+      osc2.frequency.setValueAtTime(toggle ? 440 : 330, now);
       
       gain.gain.setValueAtTime(0, now);
-      gain.gain.linearRampToValueAtTime(1.0, now + 0.05);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+      gain.gain.linearRampToValueAtTime(1.2, now + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
       
-      osc.connect(gain);
+      osc1.connect(gain);
+      osc2.connect(gain);
       gain.connect(ctx.destination);
-      osc.start(now);
-      osc.stop(now + 0.4);
+      
+      osc1.start(now);
+      osc2.start(now);
+      
+      osc1.stop(now + 0.5);
+      osc2.stop(now + 0.5);
+      
       toggle = !toggle;
-    }, 500);
+    }, 650);
 
     if (alarmStateListener) {
       alarmStateListener(true);
@@ -65,6 +115,44 @@ const playHighFrequencyAlarm = () => {
     }, 25000);
   } catch (err) {
     console.warn('Could not play high frequency alarm sound:', err);
+  }
+};
+
+const playNotificationChime = () => {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    const now = ctx.currentTime;
+    
+    // Beautiful, high-quality ding-dong chime
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const gain = ctx.createGain();
+    
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(880, now); // A5
+    osc1.frequency.exponentialRampToValueAtTime(110, now + 0.5);
+    
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(1320, now); // E6
+    osc2.frequency.exponentialRampToValueAtTime(165, now + 0.4);
+    
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.5, now + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+    
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(ctx.destination);
+    
+    osc1.start(now);
+    osc2.start(now);
+    
+    osc1.stop(now + 0.8);
+    osc2.stop(now + 0.8);
+  } catch (err) {
+    console.warn('Notification chime failed:', err);
   }
 };
 
@@ -240,6 +328,82 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
   // Bottom Bar Main Tabs & Sub-sections
   const [activeMainTab, setActiveMainTab] = useState<'community' | 'personal'>('community');
   const [activeSubSection, setActiveSubSection] = useState<string | null>(null);
+  
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Sync state to URL pathname
+  useEffect(() => {
+    const currentPath = location.pathname;
+    let expectedPath = '/';
+
+    if (activeMainTab === 'personal') {
+      expectedPath = '/profile';
+    } else if (activeSubSection === 'visitors') {
+      expectedPath = '/visitors';
+    } else if (activeSubSection === 'directory') {
+      expectedPath = '/directory';
+    } else if (activeSubSection === 'services') {
+      expectedPath = '/services';
+    } else if (activeSubSection === 'helpdesk') {
+      if (currentPath === '/notices') {
+        expectedPath = '/notices';
+      } else {
+        expectedPath = '/helpdesk';
+      }
+    } else if (activeSubSection === 'complaints') {
+      expectedPath = '/complaintbox';
+    } else if (activeSubSection === 'notifications') {
+      expectedPath = '/notifications';
+    } else if (activeSubSection === 'amenity') {
+      if (currentPath === '/amenities/gym-theatre') {
+        expectedPath = '/amenities/gym-theatre';
+      } else if (currentPath === '/amenities/gym-schedule') {
+        expectedPath = '/amenities/gym-schedule';
+      } else {
+        expectedPath = '/amenities';
+      }
+    } else {
+      expectedPath = '/directory'; // Default landing
+    }
+
+    if (currentPath !== expectedPath && !currentPath.startsWith(expectedPath)) {
+      navigate(expectedPath);
+    }
+  }, [activeMainTab, activeSubSection, location.pathname]);
+
+  // Sync URL pathname to state
+  useEffect(() => {
+    const path = location.pathname;
+    
+    if (path === '/profile') {
+      if (activeMainTab !== 'personal') setActiveMainTab('personal');
+      if (activeSubSection !== null) setActiveSubSection(null);
+    } else {
+      if (activeMainTab !== 'community') setActiveMainTab('community');
+      
+      if (path === '/visitors') {
+        if (activeSubSection !== 'visitors') setActiveSubSection('visitors');
+      } else if (path === '/directory') {
+        if (activeSubSection !== 'directory') setActiveSubSection('directory');
+      } else if (path === '/services') {
+        if (activeSubSection !== 'services') setActiveSubSection('services');
+      } else if (path === '/helpdesk') {
+        if (activeSubSection !== 'helpdesk') setActiveSubSection('helpdesk');
+      } else if (path === '/notices') {
+        if (activeSubSection !== 'helpdesk') setActiveSubSection('helpdesk');
+      } else if (path === '/complaintbox') {
+        if (activeSubSection !== 'complaints') setActiveSubSection('complaints');
+      } else if (path === '/notifications') {
+        if (activeSubSection !== 'notifications') setActiveSubSection('notifications');
+      } else if (path.startsWith('/amenities')) {
+        if (activeSubSection !== 'amenity') setActiveSubSection('amenity');
+      } else if (path === '/' || path === '') {
+        if (activeSubSection !== null) setActiveSubSection(null);
+      }
+    }
+  }, [location.pathname]);
+
   const [lastVisitedSubSection, setLastVisitedSubSection] = useState<string | null>(() => localStorage.getItem('orchid_last_visited_block'));
   const [highlightBlock, setHighlightBlock] = useState<string | null>(null);
 
@@ -258,6 +422,33 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
       return [];
     }
   });
+
+  const playedNotifIdsRef = useRef<Set<string>>(new Set());
+
+  // Real-time pleasant chime sound for brand new incoming notifications
+  useEffect(() => {
+    if (societyNotifications.length === 0) return;
+    
+    let hasNew = false;
+    societyNotifications.forEach((n) => {
+      const id = n.id;
+      if (!id) return;
+      
+      const createdTime = n.timestamp || n.createdAt ? new Date(n.timestamp || n.createdAt).getTime() : Date.now();
+      const isRecent = (Date.now() - createdTime) < 12000; // within 12 seconds
+      
+      if (!playedNotifIdsRef.current.has(id)) {
+        playedNotifIdsRef.current.add(id);
+        if (isRecent) {
+          hasNew = true;
+        }
+      }
+    });
+    
+    if (hasNew) {
+      playNotificationSound();
+    }
+  }, [societyNotifications]);
 
   // Sub-tabs state inside Resident Portal
   const [residentTab, setResidentTab] = useState<'home' | 'notices' | 'complaints' | 'financials' | 'contacts'>('home');
@@ -392,6 +583,74 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
       };
     }
   }, [activeSubSection, lastVisitedSubSection]);
+
+  // Sync activeSubSection changes with browser URL history paths
+  useEffect(() => {
+    if (activeSubSection) {
+      let path = `/${activeSubSection}`;
+      if (activeSubSection === 'helpdesk') path = '/complaintbox';
+      if (window.location.pathname !== path) {
+        window.history.pushState({ sub: activeSubSection }, '', path);
+      }
+    } else {
+      if (window.location.pathname !== '/' && window.location.pathname !== '/resident') {
+        window.history.pushState(null, '', '/');
+      }
+    }
+  }, [activeSubSection]);
+
+  // Handle back button / popstate triggers to update activeSubSection
+  useEffect(() => {
+    const handlePopState = () => {
+      const path = window.location.pathname;
+      if (path === '/visitors') {
+        setLastVisitedSubSection('visitors');
+        setActiveSubSection('visitors');
+      } else if (path === '/complaints' || path === '/complaintbox') {
+        setLastVisitedSubSection('complaints');
+        setActiveSubSection('complaints');
+      } else if (path === '/directory') {
+        setLastVisitedSubSection('directory');
+        setActiveSubSection('directory');
+      } else if (path === '/amenity' || path === '/amenities') {
+        setLastVisitedSubSection('amenity');
+        setActiveSubSection('amenity');
+      } else if (path === '/services') {
+        setLastVisitedSubSection('services');
+        setActiveSubSection('services');
+      } else if (path === '/helpdesk') {
+        setLastVisitedSubSection('helpdesk');
+        setActiveSubSection('helpdesk');
+      } else if (path === '/notifications' || path === '/alerts') {
+        setLastVisitedSubSection('notifications');
+        setActiveSubSection('notifications');
+      } else if (path === '/notices' || path === '/noticeboard') {
+        setLastVisitedSubSection('notices');
+        setActiveSubSection('notices');
+      } else {
+        setActiveSubSection(null);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    // run popstate check once on mount
+    handlePopState();
+
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Play custom chime on receiving a new society notification
+  const prevNotifsLength = useRef<number>(-1);
+  useEffect(() => {
+    if (societyNotifications.length > 0) {
+      if (prevNotifsLength.current !== -1 && societyNotifications.length > prevNotifsLength.current) {
+        playNotificationChime();
+      }
+      prevNotifsLength.current = societyNotifications.length;
+    } else {
+      prevNotifsLength.current = 0;
+    }
+  }, [societyNotifications]);
 
   // Amenities Function booking form states
   const [fPropertyName, setFPropertyName] = useState<string>('Clubhouse Party Hall');
@@ -1838,12 +2097,8 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                               {notif.type === 'movie_schedule' && (
                                 <button
                                   onClick={() => {
-                                    setLastVisitedSubSection('amenity');
-                                    setActiveSubSection('amenity');
-                                    localStorage.setItem('orchid_deep_redirect', 'movies');
-                                    setTimeout(() => {
-                                      window.dispatchEvent(new Event('orchid_amenities_redirect'));
-                                    }, 100);
+                                    const movieId = notif.metadata?.movieId || '';
+                                    navigate(`/amenities/gym-schedule?movieId=${movieId}`);
                                   }}
                                   className="text-[9px] font-black uppercase tracking-tight bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-100 px-2 py-1 rounded-lg cursor-pointer animate-pulse"
                                 >
@@ -1854,13 +2109,57 @@ export default function ResidentDashboard({ session, owners, onRefreshOwners }: 
                               {notif.type === 'complaint' && (
                                 <button
                                   onClick={() => {
-                                    setLastVisitedSubSection('complaints');
-                                    setActiveSubSection('complaints');
+                                    const complaintId = notif.metadata?.complaintId || notif.metadata?.id || '';
+                                    navigate(`/complaintbox?complaintId=${complaintId}`);
                                   }}
                                   className="text-[9px] font-black uppercase tracking-tight bg-pink-50 hover:bg-pink-100 text-pink-700 border border-pink-100 px-2 py-1 rounded-lg cursor-pointer"
                                 >
                                   Open Ticket
                                 </button>
+                              )}
+
+                              {notif.type === 'notice' && (
+                                <button
+                                  onClick={() => {
+                                    const noticeId = notif.metadata?.noticeId || notif.metadata?.id || '';
+                                    navigate(`/helpdesk?noticeId=${noticeId}`);
+                                  }}
+                                  className="text-[9px] font-black uppercase tracking-tight bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-100 px-2 py-1 rounded-lg cursor-pointer"
+                                >
+                                  Open Notice
+                                </button>
+                              )}
+
+                              {notif.type === 'visitor' && (notif.status === 'pending' || !notif.status) && notif.metadata?.visitorId && (
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={async () => {
+                                      try {
+                                        await handleRespond(notif.metadata.visitorId, 'approved');
+                                        alert('Visitor approved successfully.');
+                                      } catch (err) {
+                                        alert('Failed to approve visitor.');
+                                      }
+                                    }}
+                                    className="text-[9px] font-black uppercase tracking-tight bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded-lg cursor-pointer"
+                                  >
+                                    Allow Entry
+                                  </button>
+                                  <button
+                                    onClick={async () => {
+                                      const reason = prompt('Enter rejection reason (optional):') || 'Rejected by owner';
+                                      try {
+                                        await handleRespond(notif.metadata.visitorId, 'rejected', reason);
+                                        alert('Visitor entry denied.');
+                                      } catch (err) {
+                                        alert('Failed to deny visitor.');
+                                      }
+                                    }}
+                                    className="text-[9px] font-black uppercase tracking-tight bg-rose-600 hover:bg-rose-700 text-white px-2 py-1 rounded-lg cursor-pointer"
+                                  >
+                                    Deny Entry
+                                  </button>
+                                </div>
                               )}
 
                               {!isDismissed ? (

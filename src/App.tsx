@@ -78,13 +78,18 @@ export default function App() {
     }
   }, []);
 
-  // Set default tabs based on authenticated roles
+  // Set default tabs based on authenticated roles & URL paths
   useEffect(() => {
     if (session) {
       if (session.role === 'security') {
         setActiveTab('security');
       } else if (session.role === 'owner' || session.role === 'admin') {
-        setActiveTab('resident');
+        const path = window.location.pathname;
+        if (path === '/directory') {
+          setActiveTab('directory');
+        } else {
+          setActiveTab('resident');
+        }
       }
     } else {
       setActiveTab('directory');

@@ -7,9 +7,10 @@ interface ChunkedMediaProps {
   type: string;
   fallbackName: string;
   key?: any;
+  raw?: boolean;
 }
 
-export default function ChunkedMedia({ fileId, type, fallbackName }: ChunkedMediaProps) {
+export default function ChunkedMedia({ fileId, type, fallbackName, raw }: ChunkedMediaProps) {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<boolean>(false);
   const [mediaUrl, setMediaUrl] = useState<string>('');
@@ -58,6 +59,16 @@ export default function ChunkedMedia({ fileId, type, fallbackName }: ChunkedMedi
   }
 
   if (type?.startsWith('image/')) {
+    if (raw) {
+      return (
+        <img
+          src={mediaUrl}
+          alt={fallbackName}
+          className="max-h-full max-w-full object-contain transition duration-300 group-hover:scale-102"
+          referrerPolicy="no-referrer"
+        />
+      );
+    }
     return (
       <div className="rounded-xl border border-slate-200/60 overflow-hidden bg-slate-50 flex flex-col items-center justify-center p-1 w-full">
         <img

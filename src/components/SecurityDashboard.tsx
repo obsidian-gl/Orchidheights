@@ -701,7 +701,10 @@ export default function SecurityDashboard({ owners, onRefreshOwners }: SecurityD
                 <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">{t('guestType')} <span className="text-red-500">*</span></label>
                 <select
                   value={guestType}
-                  onChange={(e) => setGuestType(e.target.value)}
+                  onChange={(e) => {
+                    setGuestType(e.target.value);
+                    setSelectedHelperId(null);
+                  }}
                   className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded-xl py-2.5 px-3.5 text-sm font-medium transition outline-none cursor-pointer"
                 >
                   <option value="Delivery">{lang === 'EN' ? 'Delivery / Courier' : '📦 ડિલિવરી / કુરિયર'}</option>

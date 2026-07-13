@@ -20,7 +20,9 @@ const messaging = firebase.messaging();
 const db = firebase.firestore();
 
 let activeUnsubscribe = null;
+let activeSocietyUnsubscribe = null;
 const notifiedIds = new Set();
+const notifiedSocietyIds = new Set();
 
 // Check Cache Storage and setup background listeners for visitors
 function syncBackgroundListeners() {
@@ -35,6 +37,10 @@ function syncBackgroundListeners() {
           activeUnsubscribe();
           activeUnsubscribe = null;
         }
+        if (activeSocietyUnsubscribe) {
+          activeSocietyUnsubscribe();
+          activeSocietyUnsubscribe = null;
+        }
         return;
       }
       return response.json();
@@ -44,6 +50,7 @@ function syncBackgroundListeners() {
         return;
       }
       setupVisitorListener(session.wing, session.flatNo);
+      setupSocietyNotificationListener(session.wing, session.flatNo);
     })
     .catch(err => {
       console.warn('[SW] Error syncing background listeners:', err);
@@ -61,7 +68,7 @@ function setupVisitorListener(wing, flatNo) {
   activeUnsubscribe = db.collection('visitors')
     .where('wing', '==', wing)
     .where('flatNo', '==', Number(flatNo))
-    .where('status', '==', 'waiting')
+    .where('status', '==', 'pending')
     .onSnapshot(snapshot => {
       snapshot.docChanges().forEach(change => {
         if (change.type === 'added') {
@@ -69,7 +76,8 @@ function setupVisitorListener(wing, flatNo) {
           const visitor = change.doc.data();
 
           // Ensure we don't alert for old records on initial snapshot load
-          const isFresh = (Date.now() - (visitor.createdAt || Date.now())) < 60000;
+          const requestTimeMs = visitor.requestTime ? new Date(visitor.requestTime).getTime() : Date.now();
+          const isFresh = (Date.now() - requestTimeMs) < 60000;
 
           if (!notifiedIds.has(docId) && isFresh) {
             notifiedIds.add(docId);
@@ -102,6 +110,68 @@ function setupVisitorListener(wing, flatNo) {
       });
     }, err => {
       console.error('[SW] Firestore background snapshot listener error:', err);
+    });
+}
+
+// Subscribe to real-time society-wide notifications in the background
+function setupSocietyNotificationListener(wing, flatNo) {
+  if (activeSocietyUnsubscribe) {
+    activeSocietyUnsubscribe();
+  }
+
+  console.log(`[SW] Starting background society notifications listener for flat ${wing}-${flatNo}`);
+
+  activeSocietyUnsubscribe = db.collection('society_notifications')
+    .onSnapshot(snapshot => {
+      snapshot.docChanges().forEach(change => {
+        if (change.type === 'added') {
+          const docId = change.doc.id;
+          const notif = change.doc.data();
+
+          // Ensure we don't alert for old records on initial snapshot load
+          const timestampVal = notif.timestamp || notif.createdAt || new Date().toISOString();
+          const notifTime = new Date(timestampVal).getTime();
+          const isFresh = (Date.now() - notifTime) < 60000;
+
+          if (!notifiedSocietyIds.has(docId) && isFresh) {
+            notifiedSocietyIds.add(docId);
+
+            // Filter visitor notifications that do not belong to this flat
+            if (notif.type === 'visitor') {
+              const targetWing = notif.wing || notif.metadata?.wing || '';
+              const targetFlat = notif.flatNo || notif.metadata?.flatNo || '';
+              if (targetWing && targetFlat) {
+                if (targetWing.toUpperCase() !== wing.toUpperCase() || Number(targetFlat) !== Number(flatNo)) {
+                  return; // Skip, not our visitor
+                }
+              }
+            }
+
+            const title = notif.title || '🔔 Orchid Heights Alert';
+            const body = notif.message || 'A new society alert has been broadcasted.';
+            const icon = 'https://i.ibb.co/zT5tpcdY/1000296229-1.png';
+
+            self.registration.showNotification(title, {
+              body,
+              icon,
+              badge: 'https://i.ibb.co/zT5tpcdY/1000296229-1.png',
+              tag: docId,
+              requireInteraction: true,
+              data: { 
+                id: docId,
+                type: notif.type,
+                metadata: notif.metadata || {},
+                wing,
+                flatNo 
+              }
+            });
+          } else {
+            notifiedSocietyIds.add(docId);
+          }
+        }
+      });
+    }, err => {
+      console.error('[SW] Firestore background society notifications listener error:', err);
     });
 }
 
@@ -159,7 +229,8 @@ self.addEventListener('notificationclick', function(event) {
     // Write directly to Firestore from the service worker background thread!
     const updatePromise = db.collection('visitors').doc(visitorId).update({
       status: status,
-      respondedAt: new Date().toISOString()
+      respondedTime: new Date().toISOString(),
+      respondedBy: 'Background SW Quick Action'
     }).then(() => {
       console.log(`[SW] Background successfully updated visitor ${visitorId} to status: ${status}`);
     }).catch(err => {
@@ -181,23 +252,50 @@ self.addEventListener('notificationclick', function(event) {
       
       // Focus or open the browser window to resident section
       if (clients.openWindow) {
-        return clients.openWindow('/?activeTab=resident');
+        return clients.openWindow('/visitors');
       }
     });
 
     event.waitUntil(Promise.all([updatePromise, broadcastPromise]));
   } else {
-    // Standard click on notification body - focus/open application
+    // Standard click on notification body - focus/open application with target route matching type
     event.waitUntil(
       clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
+        const targetType = event.notification.data?.type || 'notifications';
+        const itemId = event.notification.data?.id || event.notification.data?.visitorId || '';
+        
+        let targetPath = '/notifications';
+        if (targetType === 'notice') {
+          targetPath = `/helpdesk?noticeId=${itemId}`;
+        } else if (targetType === 'complaint') {
+          targetPath = `/complaintbox?complaintId=${itemId}`;
+        } else if (targetType === 'visitor_request' || targetType === 'visitor') {
+          targetPath = '/visitors';
+        } else if (targetType === 'movie_schedule') {
+          const movieId = event.notification.data?.metadata?.movieId || '';
+          targetPath = `/amenities/gym-schedule?movieId=${movieId}`;
+        }
+
         for (let i = 0; i < clientList.length; i++) {
           const client = clientList[i];
           if ('focus' in client) {
+            if ('postMessage' in client) {
+              client.postMessage({
+                type: 'NOTIFICATION_CLICK_REDIRECT',
+                target: targetType,
+                itemId: itemId,
+                metadata: event.notification.data?.metadata || {}
+              });
+            }
+            // Navigate the open window to targetPath as well to ensure perfect deep linking
+            if ('navigate' in client) {
+              client.navigate(targetPath);
+            }
             return client.focus();
           }
         }
         if (clients.openWindow) {
-          return clients.openWindow('/?activeTab=resident');
+          return clients.openWindow(targetPath);
         }
       })
     );

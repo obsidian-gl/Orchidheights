@@ -13,6 +13,51 @@ import {
 import { FlatOwner, Announcement, Complaint, FinancialReport, EssentialContact, Visitor, AmenityBooking, GymTheatreLog } from '../types';
 import { api } from '../lib/api';
 import { db, collection, doc, query, onSnapshot, orderBy, updateDoc, deleteDoc } from '../lib/firebase';
+import { downloadChunkedFile } from '../lib/fileStorage';
+
+function AdminMoviePoster({ posterUrl, title }: { posterUrl: string; title: string }) {
+  const [src, setSrc] = useState<string>('');
+  const [loading, setLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    let active = true;
+    if (posterUrl && posterUrl.startsWith('file_')) {
+      downloadChunkedFile(posterUrl)
+        .then((fileData) => {
+          if (active) {
+            setSrc(fileData.base64);
+            setLoading(false);
+          }
+        })
+        .catch(() => {
+          if (active) setLoading(false);
+        });
+    } else {
+      setSrc(posterUrl);
+      setLoading(false);
+    }
+    return () => {
+      active = false;
+    };
+  }, [posterUrl]);
+
+  if (loading) {
+    return (
+      <div className="w-12 h-16 flex items-center justify-center bg-slate-900 text-slate-500 text-[8px] uppercase font-mono rounded border border-slate-200">
+        ...
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&w=300&q=80'}
+      alt={title}
+      className="w-12 h-16 object-cover rounded border border-slate-200 bg-slate-900"
+      referrerPolicy="no-referrer"
+    />
+  );
+}
 
 interface AdminDashboardProps {
   owners: FlatOwner[];
@@ -2670,9 +2715,9 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
                         }
                         let csvContent = `Orchid Heights - Movie Screenings Report\r\n`;
                         csvContent += `Generated On,${new Date().toLocaleString('en-IN')}\r\n\r\n`;
-                        csvContent += `"Movie Name","Date","Day","Timing","Length","Trailer Link"\r\n`;
+                        csvContent += `"Movie Name","Date","Day","Timing","Length","Scheduled By (Flat)","Trailer Link"\r\n`;
                         moviesSchedule.forEach((movie) => {
-                          csvContent += `"${movie.title}","${movie.date}","${movie.day}","${movie.timing}","${movie.length || 'N/A'}","${movie.trailerUrl || 'N/A'}"\r\n`;
+                          csvContent += `"${movie.title}","${movie.date}","${movie.day}","${movie.timing}","${movie.length || 'N/A'}","${movie.postedBy || 'Admin'}","${movie.trailerUrl || 'N/A'}"\r\n`;
                         });
                         const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
                         const url = URL.createObjectURL(blob);
@@ -2702,20 +2747,20 @@ export default function AdminDashboard({ owners, onRefreshOwners, onLogoutAdmin 
                             <h5 className="font-bold text-slate-800 uppercase">{movie.title}</h5>
                             <p className="text-[10px] text-slate-500 font-medium">Day: {movie.day} • {movie.date}</p>
                             <p className="text-[10px] text-slate-500 font-mono">Time: {movie.timing} • Length: {movie.length}</p>
+                            <p className="text-[8.5px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded inline-block font-mono font-bold mt-1 uppercase">
+                              By Flat: {movie.postedBy || 'Admin'}
+                            </p>
                             {movie.trailerUrl && (
-                              <a href={movie.trailerUrl} target="_blank" rel="noopener noreferrer" className="text-[9px] text-indigo-500 underline font-semibold">
-                                Watch Trailer
-                              </a>
+                              <div className="pt-0.5">
+                                <a href={movie.trailerUrl} target="_blank" rel="noopener noreferrer" className="text-[9px] text-indigo-500 underline font-semibold">
+                                  Watch Trailer
+                                </a>
+                              </div>
                             )}
                           </div>
                           <div className="flex items-center gap-2">
                             {movie.posterUrl && (
-                              <img
-                                src={movie.posterUrl}
-                                alt="poster"
-                                className="w-12 h-16 object-contain rounded border border-slate-200 bg-slate-900"
-                                referrerPolicy="no-referrer"
-                              />
+                              <AdminMoviePoster posterUrl={movie.posterUrl} title={movie.title} />
                             )}
                             <button
                               onClick={async () => {

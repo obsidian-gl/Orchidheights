@@ -1091,11 +1091,11 @@ export function subscribeToSocietyNotifications(
       // visitor notifications which must go ONLY to their specific flat!
       if (data.type === 'visitor') {
         if (data.wing.toUpperCase() === wing.toUpperCase() && Number(data.flatNo) === Number(flatNo)) {
-          list.push(data);
+          list.push({ id: docSnap.id, ...data });
         }
       } else {
         // All other notifications are visible to all owners!
-        list.push(data);
+        list.push({ id: docSnap.id, ...data });
       }
     });
     // Sort: newest first

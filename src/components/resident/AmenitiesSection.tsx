@@ -23,8 +23,52 @@ import {
 } from 'lucide-react';
 import { AmenityBooking, GymTheatreLog } from '../../types';
 import { db, collection, onSnapshot, doc, setDoc, deleteDoc, createSocietyNotification } from '../../lib/firebase';
-import { uploadFileInChunks } from '../../lib/fileStorage';
+import { uploadFileInChunks, downloadChunkedFile } from '../../lib/fileStorage';
 import ChunkedMedia from '../ChunkedMedia';
+
+function MoviePoster({ posterUrl, title }: { posterUrl: string; title: string }) {
+  const [src, setSrc] = useState<string>('');
+  const [loading, setLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    let active = true;
+    if (posterUrl && posterUrl.startsWith('file_')) {
+      downloadChunkedFile(posterUrl)
+        .then((fileData) => {
+          if (active) {
+            setSrc(fileData.base64);
+            setLoading(false);
+          }
+        })
+        .catch(() => {
+          if (active) setLoading(false);
+        });
+    } else {
+      setSrc(posterUrl);
+      setLoading(false);
+    }
+    return () => {
+      active = false;
+    };
+  }, [posterUrl]);
+
+  if (loading) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-slate-900 text-slate-500 text-[10px] uppercase font-mono tracking-wider font-bold">
+        Loading Poster...
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&w=300&q=80'}
+      alt={title}
+      className="w-full h-full object-cover transition duration-300 group-hover:scale-105"
+      referrerPolicy="no-referrer"
+    />
+  );
+}
 
 interface AmenitiesSectionProps {
   wing: string;
@@ -577,15 +621,6 @@ export default function AmenitiesSection({
               <span>Back to Menu</span>
             </button>
             <div className="flex items-center gap-2">
-              {role === 'admin' && (
-                <button
-                  onClick={handleDownloadMoviesCSV}
-                  className="px-2.5 py-1 border border-slate-200 hover:border-slate-300 rounded-xl text-[9px] font-black uppercase text-slate-600 transition flex items-center gap-1 cursor-pointer select-none"
-                >
-                  <Download className="w-3 h-3" />
-                  <span>Export CSV</span>
-                </button>
-              )}
               <button
                 onClick={() => setShowAddMovieForm(!showAddMovieForm)}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1 rounded-xl text-[9px] font-black uppercase transition flex items-center gap-1 cursor-pointer select-none shadow-xs"
@@ -791,17 +826,8 @@ export default function AmenitiesSection({
                   <div key={movie.id} className="bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden flex flex-col justify-between hover:border-slate-300 transition group relative">
                     
                     {/* Media render */}
-                    <div className="relative h-44 w-full bg-slate-900 border-b border-slate-100 flex items-center justify-center overflow-hidden">
-                      {movie.posterUrl?.startsWith('file_') ? (
-                        <ChunkedMedia fileId={movie.posterUrl} type="image/jpeg" fallbackName={movie.title} />
-                      ) : (
-                        <img
-                          src={movie.posterUrl || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&w=300&q=80'}
-                          className="max-h-full max-w-full object-contain transition duration-300 group-hover:scale-102"
-                          alt={movie.title}
-                          referrerPolicy="no-referrer"
-                        />
-                      )}
+                    <div className="relative h-52 w-full bg-slate-900 border-b border-slate-100 flex items-center justify-center overflow-hidden">
+                      <MoviePoster posterUrl={movie.posterUrl} title={movie.title} />
                       
                       <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
                         <span className="text-[8px] bg-slate-950/80 backdrop-blur-xs text-white font-black px-1.5 py-0.5 rounded uppercase tracking-wider font-mono border border-slate-800">
@@ -911,15 +937,14 @@ export default function AmenitiesSection({
               <form onSubmit={handleAddAmenityBooking} className="space-y-4 text-xs font-semibold">
                 <div>
                   <label className="block text-[9px] font-bold text-slate-500 mb-1.5 uppercase">Location / Venue Property</label>
-                  <select
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Clubhouse Party Hall, Terrace Garden, Flat 402, Garden Pavilion"
                     value={fPropertyName}
                     onChange={(e) => setFPropertyName(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-bold outline-none"
-                  >
-                    <option value="Clubhouse Party Hall">Clubhouse Party Hall</option>
-                    <option value="Terrace Garden Lounge">Terrace Garden Lounge</option>
-                    <option value="Society Pavilion Ground">Society Pavilion Ground</option>
-                  </select>
+                    className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-semibold outline-none focus:border-indigo-500"
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-2.5">
