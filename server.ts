@@ -17,8 +17,13 @@ import {
   pollPendingVisitorAlerts,
   respondToVisitorRequest,
   deleteVisitorRequest,
-  seedDatabaseIfNeeded
-} from './src/lib/firebase';
+  seedDatabaseIfNeeded,
+  getCollection,
+  getDocument,
+  addDocument,
+  setDocument,
+  deleteDocument
+} from './src/lib/server-db';
 
 async function startServer() {
   const app = express();
@@ -40,6 +45,66 @@ async function startServer() {
   // Health check
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', time: new Date().toISOString() });
+  });
+
+  // --- Generic REST Fallback endpoints for Client ---
+  app.get('/api/db/:collectionName', async (req, res) => {
+    try {
+      const { collectionName } = req.params;
+      const data = await getCollection(collectionName);
+      res.json(data);
+    } catch (err: any) {
+      console.error(`Generic API GET Collection ${req.params.collectionName} error:`, err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/db/:collectionName/:docId', async (req, res) => {
+    try {
+      const { collectionName, docId } = req.params;
+      const data = await getDocument(collectionName, docId);
+      if (data) {
+        res.json(data);
+      } else {
+        res.status(404).json({ error: 'Document not found' });
+      }
+    } catch (err: any) {
+      console.error(`Generic API GET Doc ${req.params.collectionName}/${req.params.docId} error:`, err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/db/:collectionName', async (req, res) => {
+    try {
+      const { collectionName } = req.params;
+      const data = await addDocument(collectionName, req.body);
+      res.json(data);
+    } catch (err: any) {
+      console.error(`Generic API POST Collection ${req.params.collectionName} error:`, err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.put('/api/db/:collectionName/:docId', async (req, res) => {
+    try {
+      const { collectionName, docId } = req.params;
+      const data = await setDocument(collectionName, docId, req.body);
+      res.json(data);
+    } catch (err: any) {
+      console.error(`Generic API PUT Doc ${req.params.collectionName}/${req.params.docId} error:`, err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete('/api/db/:collectionName/:docId', async (req, res) => {
+    try {
+      const { collectionName, docId } = req.params;
+      const success = await deleteDocument(collectionName, docId);
+      res.json({ success });
+    } catch (err: any) {
+      console.error(`Generic API DELETE Doc ${req.params.collectionName}/${req.params.docId} error:`, err);
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // Auth: Login endpoint

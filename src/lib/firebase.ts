@@ -6,19 +6,19 @@
 import { initializeApp } from 'firebase/app';
 import { 
   getFirestore,
-  collection,
-  doc,
-  getDoc,
-  getDocs,
+  collection as rawCollection,
+  doc as rawDoc,
+  getDoc as rawGetDoc,
+  getDocs as rawGetDocs,
   setDoc as rawSetDoc,
   addDoc as rawAddDoc,
   updateDoc as rawUpdateDoc,
-  deleteDoc,
-  query,
-  limit,
-  onSnapshot,
-  where,
-  orderBy
+  deleteDoc as rawDeleteDoc,
+  query as rawQuery,
+  limit as rawLimit,
+  onSnapshot as rawOnSnapshot,
+  where as rawWhere,
+  orderBy as rawOrderBy
 } from 'firebase/firestore';
 import { FlatOwner, Visitor, Announcement, DeviceInfo, Complaint, FinancialReport, EssentialContact } from '../types';
 import { getInitialOwners } from '../data/ownersData';
@@ -44,11 +44,181 @@ export function sanitizeData<T>(obj: T): T {
   return obj;
 }
 
-export const setDoc = async (ref: any, data: any, options?: any) => rawSetDoc(ref, sanitizeData(data), options);
-export const addDoc = async (coll: any, data: any) => rawAddDoc(coll, sanitizeData(data));
-export const updateDoc = async (ref: any, data: any) => rawUpdateDoc(ref, sanitizeData(data));
+// Browser detection
+const isBrowser = typeof window !== 'undefined' && typeof localStorage !== 'undefined';
 
-export { collection, doc, getDoc, getDocs, deleteDoc, query, limit, onSnapshot, where, orderBy };
+// Mock classes for local/HTTP fallback
+class MockDoc {
+  id: string;
+  private _data: any;
+  constructor(id: string, data: any) {
+    this.id = id;
+    this._data = data;
+  }
+  data() {
+    return this._data;
+  }
+  exists() {
+    return this._data !== undefined;
+  }
+}
+
+class MockSnapshot {
+  docs: MockDoc[];
+  size: number;
+  constructor(docs: MockDoc[]) {
+    this.docs = docs;
+    this.size = docs.length;
+  }
+  forEach(callback: (doc: MockDoc) => void) {
+    this.docs.forEach(callback);
+  }
+}
+
+// Simple fetcher helper for server REST generic db APIs
+async function serverDbRequest(method: string, path: string, body?: any) {
+  const options: any = {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+  };
+  if (body) {
+    options.body = JSON.stringify(body);
+  }
+  const res = await fetch(path, options);
+  if (!res.ok) {
+    throw new Error(`Server DB Request failed: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+// Wrapped Database Functions
+export function collection(database: any, name: string) {
+  if (isBrowser && isQuotaExceeded) {
+    return { path: name, collectionName: name, type: 'collection' };
+  }
+  return rawCollection(database, name);
+}
+
+export function doc(database: any, collectionName: string, id?: string) {
+  if (isBrowser && isQuotaExceeded) {
+    const docId = id || 'doc_' + Math.random().toString(36).substring(2, 11);
+    return { collectionName, id: docId, path: `${collectionName}/${docId}`, type: 'document' };
+  }
+  if (!id) return rawDoc(database, collectionName);
+  return rawDoc(database, collectionName, id);
+}
+
+export async function getDoc(ref: any): Promise<any> {
+  if (isBrowser && isQuotaExceeded) {
+    const collectionName = ref.collectionName;
+    const docId = ref.id;
+    try {
+      const item = await serverDbRequest('GET', `/api/db/${collectionName}/${docId}`);
+      return new MockDoc(docId, item);
+    } catch (err) {
+      return new MockDoc(docId, undefined);
+    }
+  }
+  return rawGetDoc(ref);
+}
+
+export async function getDocs(queryOrCollection: any): Promise<any> {
+  if (isBrowser && isQuotaExceeded) {
+    const collectionName = queryOrCollection.path || queryOrCollection.collectionName || queryOrCollection;
+    const data = await serverDbRequest('GET', `/api/db/${collectionName}`);
+    const docs = data.map((item: any) => new MockDoc(item.id, item));
+    return new MockSnapshot(docs);
+  }
+  return rawGetDocs(queryOrCollection);
+}
+
+export async function setDoc(ref: any, data: any, options?: any): Promise<any> {
+  if (isBrowser && isQuotaExceeded) {
+    const collectionName = ref.collectionName;
+    const docId = ref.id;
+    const result = await serverDbRequest('PUT', `/api/db/${collectionName}/${docId}`, data);
+    return new MockDoc(docId, result);
+  }
+  return rawSetDoc(ref, sanitizeData(data), options);
+}
+
+export async function addDoc(coll: any, data: any): Promise<any> {
+  if (isBrowser && isQuotaExceeded) {
+    const collectionName = coll.path || coll;
+    const result = await serverDbRequest('POST', `/api/db/${collectionName}`, data);
+    return new MockDoc(result.id, result);
+  }
+  return rawAddDoc(coll, sanitizeData(data));
+}
+
+export async function updateDoc(ref: any, data: any): Promise<any> {
+  if (isBrowser && isQuotaExceeded) {
+    const collectionName = ref.collectionName;
+    const docId = ref.id;
+    const result = await serverDbRequest('PUT', `/api/db/${collectionName}/${docId}`, data);
+    return new MockDoc(docId, result);
+  }
+  return rawUpdateDoc(ref, sanitizeData(data));
+}
+
+export async function deleteDoc(ref: any): Promise<any> {
+  if (isBrowser && isQuotaExceeded) {
+    const collectionName = ref.collectionName;
+    const docId = ref.id;
+    await serverDbRequest('DELETE', `/api/db/${collectionName}/${docId}`);
+    return true;
+  }
+  return rawDeleteDoc(ref);
+}
+
+export function query(ref: any, ...constraints: any[]) {
+  if (isBrowser && isQuotaExceeded) {
+    return ref;
+  }
+  return rawQuery(ref, ...constraints);
+}
+
+export function limit(num: number) {
+  if (isBrowser && isQuotaExceeded) return { type: 'limit', num };
+  return rawLimit(num);
+}
+
+export function orderBy(field: string, direction?: any) {
+  if (isBrowser && isQuotaExceeded) return { type: 'orderBy', field, direction };
+  return rawOrderBy(field, direction);
+}
+
+export function where(field: string, op: any, value: any) {
+  if (isBrowser && isQuotaExceeded) return { type: 'where', field, op, value };
+  return rawWhere(field, op, value);
+}
+
+export function onSnapshot(refOrQuery: any, callback: any, errorCallback?: any): any {
+  if (isBrowser && isQuotaExceeded) {
+    let active = true;
+    const collectionName = refOrQuery.path || refOrQuery.collectionName || refOrQuery;
+    
+    const poll = async () => {
+      try {
+        const data = await serverDbRequest('GET', `/api/db/${collectionName}`);
+        if (!active) return;
+        const docs = data.map((item: any) => new MockDoc(item.id, item));
+        callback(new MockSnapshot(docs));
+      } catch (err) {
+        if (errorCallback) errorCallback(err);
+      }
+    };
+
+    poll(); // initial fetch
+    const intervalId = setInterval(poll, 2500); // poll every 2.5 seconds
+
+    return () => {
+      active = false;
+      clearInterval(intervalId);
+    };
+  }
+  return rawOnSnapshot(refOrQuery, callback, errorCallback);
+}
 
 export enum OperationType {
   CREATE = 'create',
@@ -65,7 +235,7 @@ function handleFirestoreError(error: unknown, op: OperationType, path: string | 
   throw new Error(JSON.stringify(errInfo));
 }
 
-export let isQuotaExceeded = localStorage.getItem('orchid_quota_exceeded') === 'true';
+export let isQuotaExceeded = isBrowser ? localStorage.getItem('orchid_quota_exceeded') === 'true' : false;
 
 export function isQuotaError(error: any): boolean {
   if (!error) return false;
@@ -83,7 +253,9 @@ export function isQuotaError(error: any): boolean {
 export function markQuotaExceeded() {
   if (!isQuotaExceeded) {
     isQuotaExceeded = true;
-    localStorage.setItem('orchid_quota_exceeded', 'true');
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('orchid_quota_exceeded', 'true');
+    }
     console.warn("--- Firestore Quota Exceeded! Seamlessly switched to client fallback mode ---");
   }
 }
